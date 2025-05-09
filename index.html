@@ -7,77 +7,52 @@ body { font-family: Arial; padding: 20px; background: #f5f5f5; }
 h2 { color: #333; }
 input[type="date"], input[type="text"] { margin: 10px 10px 20px 0; padding: 8px; font-size: 16px; }
 button { padding: 8px 12px; font-size: 16px; }
-table { border-collapse: collapse; width: 100%; background: white; margin-top: 20px; }
+table { border-collapse: collapse; width: 100%; background: white; }
 th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-th { background-color: #eee; cursor: pointer; }
+th { background-color: #eee; }
 </style>
 </head>
 <body>
 <h2>Inventory Viewer</h2>
-
 <label>Start Date: <input type="date" id="startDate" /></label>
-<label>End Date: <input type="date" id="endDate" /></label><br>
-<input type="text" id="searchInput" placeholder="Search by barcode, item, or supplier" />
+<label>End Date: <input type="date" id="endDate" /></label>
+<input type="text" id="search" placeholder="Search barcode, name or supplier..." />
 <button onclick="fetchInventory()">View Inventory</button>
 
 <table id="inventoryTable">
 <thead>
 <tr>
-<th onclick="sortTable(0)">Barcode</th>
-<th onclick="sortTable(1)">Item Name</th>
-<th onclick="sortTable(2)">Supplier</th>
-<th onclick="sortTable(3)">Current Inventory</th>
+<th>Barcode</th>
+<th>Item Name</th>
+<th>Supplier</th>
+<th>Current Inventory</th>
 </tr>
 </thead>
 <tbody></tbody>
 </table>
-
 <script>
 const API_URL = "https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec";
-
 function fetchInventory() {
 const startDate = document.getElementById("startDate").value;
 const endDate = document.getElementById("endDate").value;
-const search = document.getElementById("searchInput").value.toLowerCase();
-
+const search = document.getElementById("search").value;
 if (!startDate || !endDate) return alert("Please select both dates.");
 
-fetch(`${API_URL}?startDate=${startDate}&endDate=${endDate}`)
+fetch(API_URL + `?startDate=${startDate}&endDate=${endDate}&search=${encodeURIComponent(search)}`)
 .then(res => res.json())
 .then(data => {
 const tbody = document.querySelector("#inventoryTable tbody");
 tbody.innerHTML = "";
-
-data
-.filter(item => {
-const match = (item.barcode || "").toLowerCase().includes(search) ||
-(item.name || "").toLowerCase().includes(search) ||
-(item.supplier || "").toLowerCase().includes(search);
-return match;
-})
-.forEach(item => {
+data.forEach(item => {
 const row = `<tr>
-<td>${item.barcode}</td>
-<td>${item.name}</td>
-<td>${item.supplier || ""}</td>
-<td>${item.remaining}</td>
+<td>${item["barcode"]}</td>
+<td>${item["name"]}</td>
+<td>${item["supplier"]}</td>
+<td>${item["remaining"]}</td>
 </tr>`;
 tbody.innerHTML += row;
 });
 });
-}
-
-function sortTable(columnIndex) {
-const table = document.getElementById("inventoryTable");
-const rows = Array.from(table.rows).slice(1); // exclude header
-let sorted = rows.sort((a, b) => {
-const valA = a.cells[columnIndex].textContent.toLowerCase();
-const valB = b.cells[columnIndex].textContent.toLowerCase();
-return valA.localeCompare(valB);
-});
-const tbody = table.tBodies[0];
-tbody.innerHTML = "";
-sorted.forEach(row => tbody.appendChild(row));
 }
 </script>
 </body>
