@@ -1,0 +1,89 @@
+
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Inventory Checker</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+      background: #f5f5f5;
+    }
+    h1 {
+      color: #333;
+    }
+    input[type="text"] {
+      width: 90%;
+      padding: 10px;
+      margin-top: 10px;
+      font-size: 16px;
+    }
+    table {
+      width: 100%;
+      margin-top: 20px;
+      border-collapse: collapse;
+      background: white;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 10px;
+      text-align: left;
+    }
+    th {
+      background-color: #4CAF50;
+      color: white;
+    }
+    tr:hover {
+      background-color: #f1f1f1;
+    }
+  </style>
+</head>
+<body>
+  <h1>Inventory Checker</h1>
+  <input type="text" id="search" placeholder="Search by item name or barcode..." onkeyup="filterTable()">
+  <table id="inventoryTable">
+    <thead>
+      <tr>
+        <th>Barcode</th>
+        <th>Item Name</th>
+        <th>Supplier</th>
+        <th>Current Inventory</th>
+      </tr>
+    </thead>
+    <tbody id="tableBody">
+      <!-- Data rows will be injected here -->
+    </tbody>
+  </table>
+
+  <script>
+    async function fetchInventory() {
+      const response = await fetch('YOUR_GOOGLE_APPS_SCRIPT_WEB_URL');
+      const data = await response.json();
+      const tableBody = document.getElementById('tableBody');
+      tableBody.innerHTML = '';
+
+      data.forEach(row => {
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${row.Barcode}</td>
+          <td>${row["Item Name"]}</td>
+          <td>${row.Supplier}</td>
+          <td>${row["Current Inventory"]}</td>
+        `;
+        tableBody.appendChild(tr);
+      });
+    }
+
+    function filterTable() {
+      const query = document.getElementById('search').value.toLowerCase();
+      const rows = document.querySelectorAll('#inventoryTable tbody tr');
+      rows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        row.style.display = text.includes(query) ? '' : 'none';
+      });
+    }
+
+    fetchInventory();
+  </script>
+</body>
+</html>
