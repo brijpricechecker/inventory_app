@@ -57,7 +57,7 @@
 
   <script>
     async function fetchInventory() {
-      const response = await fetch('https://docs.google.com/spreadsheets/d/1sdCUWVJYgWJ7BKr8S-t5AOZpbPjuhmMd/edit?gid=748834337#gid=748834337');
+      const response = await fetch('https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec');
       const data = await response.json();
       const tableBody = document.getElementById('tableBody');
       tableBody.innerHTML = '';
