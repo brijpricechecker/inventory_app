@@ -62,6 +62,7 @@
               item.supplier.toLowerCase().includes(searchQuery)
             )
             .sort((a, b) => a.name.localeCompare(b.name))
+            console.log(data);
             .forEach(item => {
               const row = `<tr>
                 <td>${item.barcode}</td>
