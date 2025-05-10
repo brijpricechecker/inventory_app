@@ -1,76 +1,149 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Inventory Viewer</title>
-<style>
-body { font-family: Arial, sans-serif; padding: 20px; background: #f0f0f0; }
-h2 { color: #333; }
-input[type="date"], input[type="text"], button {
-margin: 10px 10px 20px 0;
-padding: 8px;
-font-size: 16px;
-}
-table { border-collapse: collapse; width: 100%; background: white; }
-th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-th { background-color: #eee; }
-</style>
+  <title>Inventory Viewer</title>
+  <style>
+    body {
+      font-family: Arial;
+      padding: 20px;
+      background: #f5f5f5;
+    }
+    h2 {
+      color: #333;
+    }
+    input[type="date"], input[type="text"] {
+      margin: 10px 10px 20px 0;
+      padding: 8px;
+      font-size: 16px;
+    }
+    button {
+      padding: 8px 12px;
+      font-size: 16px;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      background: white;
+      margin-top: 20px;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 8px;
+      text-align: left;
+    }
+    th {
+      background-color: #eee;
+      cursor: pointer;
+    }
+    th.sorted-asc::after {
+      content: " ▲";
+      color: #555;
+    }
+    th.sorted-desc::after {
+      content: " ▼";
+      color: #555;
+    }
+  </style>
 </head>
 <body>
-<h2>Inventory Viewer</h2>
-<label>Start Date: <input type="date" id="startDate" /></label>
-<label>End Date: <input type="date" id="endDate" /></label>
-<input type="text" id="search" placeholder="Search by item, barcode, or supplier" />
-<button onclick="fetchInventory()">View Inventory</button>
+  <h2>Inventory Viewer</h2>
 
-<table id="inventoryTable">
-<thead>
-<tr>
-<th>Barcode</th>
-<th>Item Name</th>
-<th>Supplier</th>
-<th>Total Purchased</th>
-<th>Total Sold</th>
-<th>Current Inventory</th>
-</tr>
-</thead>
-<tbody></tbody>
-</table>
+  <label>Start Date: <input type="date" id="startDate" /></label>
+  <label>End Date: <input type="date" id="endDate" /></label>
+  <label>Search: <input type="text" id="searchInput" placeholder="Barcode, Item, Supplier" /></label>
+  <button onclick="fetchInventory()">View Inventory</button>
 
-<script>
-const API_URL = "https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec";
+  <table id="inventoryTable">
+    <thead>
+      <tr>
+        <th onclick="sortTable(0)">Barcode</th>
+        <th onclick="sortTable(1)">Item Name</th>
+        <th onclick="sortTable(2)">Supplier</th>
+        <th onclick="sortTable(3)">Total Purchased</th>
+        <th onclick="sortTable(4)">Total Sold</th>
+        <th onclick="sortTable(5)">Current Inventory</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
 
-function fetchInventory() {
-const startDate = document.getElementById("startDate").value;
-const endDate = document.getElementById("endDate").value;
-const search = document.getElementById("search").value;
+  <script>
+    const API_URL = "PASTE_YOUR_DEPLOYED_SCRIPT_URL_HERE";
 
-if (!startDate || !endDate) {
-alert("Please select both start and end dates.");
-return;
-}
+    function fetchInventory() {
+      const startDate = document.getElementById("startDate").value;
+      const endDate = document.getElementById("endDate").value;
+      const searchValue = document.getElementById("searchInput").value.toLowerCase();
 
-fetch(`${API_URL}?startDate=${startDate}&endDate=${endDate}&search=${encodeURIComponent(search)}`)
-.then(response => response.json())
-.then(data => {
-const tbody = document.querySelector("#inventoryTable tbody");
-tbody.innerHTML = "";
-data.forEach(item => {
-const row = `
-<tr>
-<td>${item.barcode}</td>
-<td>${item.name}</td>
-<td>${item.supplier}</td>
-<td>${item.totalPurchased}</td>
-<td>${item.totalSold}</td>
-<td>${item.currentInventory}</td>
-</tr>`;
-tbody.innerHTML += row;
-});
-})
-.catch(err => {
-alert("Error loading inventory: " + err);
-});
-}
-</script>
+      if (!startDate || !endDate) {
+        alert("Please select both dates.");
+        return;
+      }
+
+      fetch(API_URL + `?startDate=${startDate}&endDate=${endDate}`)
+        .then(res => res.json())
+        .then(data => {
+          const tbody = document.querySelector("#inventoryTable tbody");
+          tbody.innerHTML = "";
+
+          const filtered = data.filter(item => {
+            const matchBarcode = item.barcode && item.barcode.toLowerCase().includes(searchValue);
+            const matchName = item.name && item.name.toLowerCase().includes(searchValue);
+            const matchSupplier = item.supplier && item.supplier.toLowerCase().includes(searchValue);
+            return !searchValue || matchBarcode || matchName || matchSupplier;
+          });
+
+          filtered.forEach(item => {
+            const row = `<tr>
+              <td>${item.barcode}</td>
+              <td>${item.name}</td>
+              <td>${item.supplier}</td>
+              <td>${item.totalPurchased}</td>
+              <td>${item.totalSold}</td>
+              <td>${item.currentInventory}</td>
+            </tr>`;
+            tbody.innerHTML += row;
+          });
+        });
+    }
+
+    function sortTable(columnIndex) {
+      const table = document.getElementById("inventoryTable");
+      const tbody = table.tBodies[0];
+      const rows = Array.from(tbody.rows);
+
+      const isNumeric = !isNaN(rows[0].cells[columnIndex].innerText);
+      const headers = table.querySelectorAll("th");
+      let ascending = table.getAttribute("data-sort-dir") !== "asc";
+      let prevIndex = table.getAttribute("data-sort-index");
+
+      if (prevIndex == columnIndex) {
+        ascending = !ascending;
+      }
+
+      table.setAttribute("data-sort-dir", ascending ? "asc" : "desc");
+      table.setAttribute("data-sort-index", columnIndex);
+
+      headers.forEach((th, i) => {
+        th.classList.remove("sorted-asc", "sorted-desc");
+        if (i == columnIndex) {
+          th.classList.add(ascending ? "sorted-asc" : "sorted-desc");
+        }
+      });
+
+      rows.sort((a, b) => {
+        const valA = a.cells[columnIndex].innerText.trim();
+        const valB = b.cells[columnIndex].innerText.trim();
+
+        if (isNumeric) {
+          return ascending ? valA - valB : valB - valA;
+        } else {
+          return ascending ? valA.localeCompare(valB) : valB.localeCompare(valA);
+        }
+      });
+
+      rows.forEach(row => tbody.appendChild(row));
+    }
+  </script>
 </body>
 </html>
