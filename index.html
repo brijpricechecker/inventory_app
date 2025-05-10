@@ -1,59 +1,80 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Inventory Viewer</title>
-<style>
-body { font-family: Arial; padding: 20px; background: #f5f5f5; }
-h2 { color: #333; }
-input[type="date"], input[type="text"] { margin: 10px 10px 20px 0; padding: 8px; font-size: 16px; }
-button { padding: 8px 12px; font-size: 16px; }
-table { border-collapse: collapse; width: 100%; background: white; }
-th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-th { background-color: #eee; }
-</style>
+  <title>Inventory Viewer</title>
+  <style>
+    body { font-family: Arial; padding: 20px; background: #f5f5f5; }
+    h2 { color: #333; }
+    input[type="date"], input[type="text"] {
+      margin: 10px 10px 20px 0; padding: 8px; font-size: 16px;
+    }
+    button { padding: 8px 12px; font-size: 16px; }
+    table { border-collapse: collapse; width: 100%; background: white; margin-top: 20px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+    th { background-color: #eee; }
+  </style>
 </head>
 <body>
-<h2>Inventory Viewer</h2>
-<label>Start Date: <input type="date" id="startDate" /></label>
-<label>End Date: <input type="date" id="endDate" /></label>
-<input type="text" id="search" placeholder="Search barcode, name or supplier..." />
-<button onclick="fetchInventory()">View Inventory</button>
+  <h2>Inventory Viewer</h2>
 
-<table id="inventoryTable">
-<thead>
-<tr>
-<th>Barcode</th>
-<th>Item Name</th>
-<th>Supplier</th>
-<th>Current Inventory</th>
-</tr>
-</thead>
-<tbody></tbody>
-</table>
-<script>
-const API_URL = "https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec";
-function fetchInventory() {
-const startDate = document.getElementById("startDate").value;
-const endDate = document.getElementById("endDate").value;
-const search = document.getElementById("search").value;
-if (!startDate || !endDate) return alert("Please select both dates.");
+  <label>Start Date: <input type="date" id="startDate" /></label>
+  <label>End Date: <input type="date" id="endDate" /></label><br>
+  <label>Search: <input type="text" id="searchInput" placeholder="Barcode, Name or Supplier" /></label>
+  <button onclick="fetchInventory()">View Inventory</button>
 
-fetch(API_URL + `?startDate=${startDate}&endDate=${endDate}&search=${encodeURIComponent(search)}`)
-.then(res => res.json())
-.then(data => {
-const tbody = document.querySelector("#inventoryTable tbody");
-tbody.innerHTML = "";
-data.forEach(item => {
-const row = `<tr>
-<td>${item["barcode"]}</td>
-<td>${item["name"]}</td>
-<td>${item["supplier"]}</td>
-<td>${item["remaining"]}</td>
-</tr>`;
-tbody.innerHTML += row;
-});
-});
-}
-</script>
+  <table id="inventoryTable">
+    <thead>
+      <tr>
+        <th>Barcode</th>
+        <th>Item Name</th>
+        <th>Supplier</th>
+        <th>Total Purchased</th>
+        <th>Total Sold</th>
+        <th>Current Inventory</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <script>
+    const API_URL = "YOUR_DEPLOYED_WEB_APP_URL_HERE"; // <-- Replace this with your Web App URL
+
+    function fetchInventory() {
+      const startDate = document.getElementById("startDate").value;
+      const endDate = document.getElementById("endDate").value;
+      const searchQuery = document.getElementById("searchInput").value.toLowerCase();
+
+      if (!startDate || !endDate) {
+        alert("Please select both dates.");
+        return;
+      }
+
+      fetch(`${API_URL}?startDate=${startDate}&endDate=${endDate}`)
+        .then(res => res.json())
+        .then(data => {
+          const tbody = document.querySelector("#inventoryTable tbody");
+          tbody.innerHTML = "";
+
+          data
+            .filter(item =>
+              item.barcode.toLowerCase().includes(searchQuery) ||
+              item.name.toLowerCase().includes(searchQuery) ||
+              item.supplier.toLowerCase().includes(searchQuery)
+            )
+            .sort((a, b) => a.name.localeCompare(b.name))
+            .forEach(item => {
+              const row = `<tr>
+                <td>${item.barcode}</td>
+                <td>${item.name}</td>
+                <td>${item.supplier}</td>
+                <td>${item.totalPurchased}</td>
+                <td>${item.totalSold}</td>
+                <td>${item.currentInventory}</td>
+              </tr>`;
+              tbody.innerHTML += row;
+            });
+        });
+    }
+  </script>
 </body>
 </html>
