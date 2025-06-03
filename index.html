@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+  <!DOCTYPE html>
 <html>
 <head>
   <title>RhoJetInventory</title>
@@ -86,12 +86,14 @@
           const tbody = document.querySelector("#inventoryTable tbody");
           tbody.innerHTML = "";
 
-          const filtered = data.filter(item => {
-            const matchBarcode = item.barcode && item.barcode.toLowerCase().includes(searchValue);
-            const matchName = item.name && item.name.toLowerCase().includes(searchValue);
-            const matchSupplier = item.supplier && item.supplier.toLowerCase().includes(searchValue);
+        const filtered = data.filter(item => {
+            const matchBarcode = item.barcode?.toString().toLowerCase().includes(searchValue);
+            const matchName = item.name?.toString().toLowerCase().includes(searchValue);
+            const matchSupplier = item.supplier?.toString().toLowerCase().includes(searchValue);
             return !searchValue || matchBarcode || matchName || matchSupplier;
-          });
+        });
+
+          
 
           filtered.forEach(item => {
             const row = `<tr>
