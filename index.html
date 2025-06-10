@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Inventory Management</title>
+  <title>Inventory and PO</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -84,14 +84,13 @@
 
   <button class="button" onclick="submitOrders()">Submit Orders</button>
   <button class="button" onclick="downloadCSV()">Download CSV</button>
-  <p><strong>Web App URL:</strong>https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec</p>
-
+  
   <script>
     let allInventory = [];
     let selectedSuppliers = new Set();
 
     function fetchInventory() {
-      fetch('https://script.google.com/macros/s/YOUR_DEPLOYED_WEB_APP_ID/exec')
+      fetch('https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec')
         .then(res => res.json())
         .then(data => {
           allInventory = data;
