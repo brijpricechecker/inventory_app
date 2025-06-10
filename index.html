@@ -1,193 +1,171 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>RhoJet Purchase Order</title>
+  <title>Inventory & Purchase Order</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      padding: 20px;
-      background: #f9f9f9;
-    }
-    h2 {
-      margin-bottom: 10px;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      background: white;
-      margin-top: 20px;
-    }
-    th, td {
-      border: 1px solid #ddd;
-      padding: 8px;
-    }
-    th {
-      background-color: #f1f1f1;
-    }
-    input[type="number"] {
-      width: 60px;
-    }
-    select {
-      padding: 4px;
-    }
-    .controls {
-      margin-bottom: 20px;
-    }
-    button {
-      margin-right: 10px;
-      padding: 8px 12px;
-    }
+    body { font-family: Arial; padding: 20px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+    th { background-color: #f4f4f4; }
+    select, input[type="number"] { width: 100%; padding: 5px; }
+    button { padding: 10px 15px; margin-top: 20px; }
   </style>
 </head>
 <body>
-  <h2>Purchase Order Form</h2>
 
-  <!-- Replace with your actual deployed web app URL -->
-  <p><strong>Web App URL:</strong> <a href="https://script.google.com/macros/s/YOUR_DEPLOYED_WEBAPP_ID/exec" target="_blank">
-    https://script.google.com/macros/s/YOUR_DEPLOYED_WEBAPP_ID/exec</a></p>
+<h2>Inventory and Purchase Order</h2>
 
-  <div class="controls">
-    <button onclick="fetchInventory()">Load Inventory</button>
-    <button onclick="submitOrder()">Submit Order</button>
-    <button onclick="downloadCSV()">Download CSV</button>
-  </div>
+<label for="supplierFilter">Filter by Supplier:</label>
+<select id="supplierFilter" multiple></select>
+<br>
 
-  <table id="inventoryTable">
-    <thead>
+<table id="inventoryTable">
+  <thead>
+    <tr>
+      <th>Barcode</th>
+      <th>Item Name</th>
+      <th>Supplier</th>
+      <th>Alt Supplier</th>
+      <th>Purchase Price</th>
+      <th>Alt PP</th>
+      <th>Total Sold</th>
+      <th>Current Inventory</th>
+      <th>Order Qty</th>
+      <th>Use Alt?</th>
+      <th>Amount</th>
+      <th>Include?</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+<button onclick="submitOrders()">Submit Orders</button>
+<button onclick="downloadCSV()">Download CSV</button>
+
+<p>Web App URL: <a href="https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec" target="_blank">Open App</a></p>
+
+<script>
+let inventoryData = [];
+
+function fetchData() {
+  const supplierFilter = document.getElementById("supplierFilter");
+  const selected = Array.from(supplierFilter.selectedOptions).map(opt => opt.value);
+  const param = selected.length ? `?suppliers=${selected.join(',')}` : '';
+  fetch("/exec" + param)
+    .then(res => res.json())
+    .then(data => {
+      inventoryData = data;
+      populateTable(data);
+      populateSuppliers(data);
+    });
+}
+
+function populateSuppliers(data) {
+  const filter = document.getElementById("supplierFilter");
+  const uniqueSuppliers = [...new Set(data.map(d => d.supplier))].filter(Boolean);
+  filter.innerHTML = uniqueSuppliers.map(s => `<option value="${s}">${s}</option>`).join('');
+}
+
+function populateTable(data) {
+  const tbody = document.querySelector("#inventoryTable tbody");
+  tbody.innerHTML = "";
+  data.forEach((item, i) => {
+    tbody.innerHTML += `
       <tr>
-        <th>Order</th>
-        <th>Barcode</th>
-        <th>Item Name</th>
-        <th>Supplier</th>
-        <th>Purchase Price</th>
-        <th>Quantity</th>
-        <th>Amount</th>
+        <td>${item.barcode}</td>
+        <td>${item.name}</td>
+        <td>${item.supplier}</td>
+        <td>${item.altSupplier}</td>
+        <td>${item.purchasePrice}</td>
+        <td>${item.altPP}</td>
+        <td>${item.totalSold}</td>
+        <td>${item.currentInventory}</td>
+        <td><input type="number" min="0" data-idx="${i}" class="orderQty"></td>
+        <td><input type="checkbox" data-idx="${i}" class="useAlt"></td>
+        <td class="amount">0</td>
+        <td><input type="checkbox" class="includeOrder" data-idx="${i}" checked></td>
       </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
+    `;
+  });
+  document.querySelectorAll('.orderQty, .useAlt').forEach(el => {
+    el.addEventListener('input', updateAmounts);
+    el.addEventListener('change', updateAmounts);
+  });
+}
 
-  <script>
-    const API_URL = "https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec"; // Replace with your actual Web App URL
+function updateAmounts() {
+  document.querySelectorAll("#inventoryTable tbody tr").forEach((row, i) => {
+    const qty = Number(row.querySelector(".orderQty").value || 0);
+    const useAlt = row.querySelector(".useAlt").checked;
+    const item = inventoryData[i];
+    const unitPrice = useAlt && item.altPP ? parseFloat(item.altPP) : parseFloat(item.purchasePrice);
+    const amount = qty * (unitPrice || 0);
+    row.querySelector(".amount").innerText = amount.toFixed(2);
+  });
+}
 
-    let lastFetchedData = [];
+function submitOrders() {
+  const orders = [];
+  document.querySelectorAll("#inventoryTable tbody tr").forEach((row, i) => {
+    const include = row.querySelector(".includeOrder").checked;
+    if (!include) return;
+    const qty = Number(row.querySelector(".orderQty").value || 0);
+    if (!qty) return;
+    const item = inventoryData[i];
+    const useAlt = row.querySelector(".useAlt").checked;
+    const unitPrice = useAlt && item.altPP ? parseFloat(item.altPP) : parseFloat(item.purchasePrice);
+    const supplier = useAlt && item.altSupplier ? item.altSupplier : item.supplier;
+    const amount = qty * unitPrice;
+    orders.push({
+      barcode: item.barcode,
+      name: item.name,
+      supplier,
+      orderQty: qty,
+      unitPrice,
+      amount: parseFloat(amount.toFixed(2))
+    });
+  });
 
-    function fetchInventory() {
-      fetch(API_URL)
-        .then(res => res.json())
-        .then(data => {
-          lastFetchedData = data;
-          const tbody = document.querySelector("#inventoryTable tbody");
-          tbody.innerHTML = "";
+  fetch("/exec", {
+    method: "POST",
+    body: JSON.stringify({ orders }),
+    headers: { "Content-Type": "application/json" }
+  })
+  .then(res => res.json())
+  .then(res => {
+    if (res.success) alert("Orders submitted to Google Sheet.");
+  });
+}
 
-          data.forEach((item, index) => {
-            const row = document.createElement("tr");
+function downloadCSV() {
+  const rows = [
+    ["Barcode", "Item Name", "Supplier", "Order Qty", "Unit Price", "Amount"]
+  ];
+  document.querySelectorAll("#inventoryTable tbody tr").forEach((row, i) => {
+    const include = row.querySelector(".includeOrder").checked;
+    if (!include) return;
+    const qty = Number(row.querySelector(".orderQty").value || 0);
+    if (!qty) return;
+    const item = inventoryData[i];
+    const useAlt = row.querySelector(".useAlt").checked;
+    const unitPrice = useAlt && item.altPP ? parseFloat(item.altPP) : parseFloat(item.purchasePrice);
+    const supplier = useAlt && item.altSupplier ? item.altSupplier : item.supplier;
+    const amount = qty * unitPrice;
+    rows.push([
+      item.barcode, item.name, supplier, qty, unitPrice, amount.toFixed(2)
+    ]);
+  });
+  const csv = rows.map(r => r.join(",")).join("\n");
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = 'purchase_orders.csv';
+  link.click();
+}
 
-            row.innerHTML = `
-              <td><input type="checkbox" onchange="toggleOrder(${index})" /></td>
-              <td>${item.barcode}</td>
-              <td>${item.name}</td>
-              <td>
-                <select onchange="updateSupplier(${index})">
-                  <option value="supplier" selected>${item.supplier}</option>
-                  <option value="alt">ALT SUPPLIER</option>
-                </select>
-              </td>
-              <td id="price-${index}">${item.purchasePrice || 0}</td>
-              <td><input type="number" id="qty-${index}" value="1" min="1" disabled onchange="updateAmount(${index})" /></td>
-              <td id="amount-${index}">0</td>
-            `;
-            tbody.appendChild(row);
-          });
-        });
-    }
+document.getElementById("supplierFilter").addEventListener("change", fetchData);
+window.onload = fetchData;
+</script>
 
-    function toggleOrder(index) {
-      const checkbox = document.querySelectorAll("input[type='checkbox']")[index];
-      const qtyInput = document.getElementById(`qty-${index}`);
-      qtyInput.disabled = !checkbox.checked;
-      if (!checkbox.checked) {
-        document.getElementById(`amount-${index}`).textContent = "0";
-      } else {
-        updateAmount(index);
-      }
-    }
-
-    function updateSupplier(index) {
-      const select = document.querySelectorAll("select")[index];
-      const item = lastFetchedData[index];
-      const priceCell = document.getElementById(`price-${index}`);
-
-      const price = select.value === "alt" ? (item.altPrice || 0) : (item.purchasePrice || 0);
-      priceCell.textContent = price;
-
-      if (document.querySelectorAll("input[type='checkbox']")[index].checked) {
-        updateAmount(index);
-      }
-    }
-
-    function updateAmount(index) {
-      const qty = Number(document.getElementById(`qty-${index}`).value || 1);
-      const price = Number(document.getElementById(`price-${index}`).textContent || 0);
-      document.getElementById(`amount-${index}`).textContent = (qty * price).toFixed(2);
-    }
-
-    function submitOrder() {
-      const orders = [];
-
-      lastFetchedData.forEach((item, index) => {
-        const isChecked = document.querySelectorAll("input[type='checkbox']")[index].checked;
-        if (isChecked) {
-          const qty = Number(document.getElementById(`qty-${index}`).value || 1);
-          const amount = Number(document.getElementById(`amount-${index}`).textContent || 0);
-          const supplierType = document.querySelectorAll("select")[index].value;
-          const supplierName = supplierType === "alt" ? item.altSupplier : item.supplier;
-
-          orders.push({
-            barcode: item.barcode,
-            name: item.name,
-            supplier: supplierName,
-            qty,
-            price: supplierType === "alt" ? item.altPrice : item.purchasePrice,
-            amount
-          });
-        }
-      });
-
-      if (orders.length === 0) {
-        alert("No items selected.");
-        return;
-      }
-
-      google.script.run
-        .withSuccessHandler(() => alert("Order saved to PO sheet."))
-        .savePurchaseOrder(orders);
-    }
-
-    function downloadCSV() {
-      const rows = [["Barcode", "Item Name", "Supplier", "Quantity", "Price", "Amount"]];
-      lastFetchedData.forEach((item, index) => {
-        const isChecked = document.querySelectorAll("input[type='checkbox']")[index].checked;
-        if (isChecked) {
-          const qty = document.getElementById(`qty-${index}`).value;
-          const price = document.getElementById(`price-${index}`).textContent;
-          const amount = document.getElementById(`amount-${index}`).textContent;
-          const supplierType = document.querySelectorAll("select")[index].value;
-          const supplier = supplierType === "alt" ? item.altSupplier : item.supplier;
-
-          rows.push([item.barcode, item.name, supplier, qty, price, amount]);
-        }
-      });
-
-      let csv = rows.map(row => row.join(",")).join("\n");
-      const blob = new Blob([csv], { type: "text/csv" });
-      const url = URL.createObjectURL(blob);
-
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = "purchase_order.csv";
-      link.click();
-    }
-  </script>
 </body>
 </html>
