@@ -1,72 +1,66 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>RhoJetInventory</title>
+  <title>RhoJet Purchase Order</title>
   <style>
     body {
-      font-family: Arial;
+      font-family: Arial, sans-serif;
       padding: 20px;
-      background: #f5f5f5;
+      background: #f9f9f9;
     }
     h2 {
-      color: #333;
-    }
-    input[type="date"], input[type="text"] {
-      margin: 10px 10px 20px 0;
-      padding: 8px;
-      font-size: 16px;
-    }
-    button {
-      padding: 8px 12px;
-      font-size: 16px;
+      margin-bottom: 10px;
     }
     table {
-      border-collapse: collapse;
       width: 100%;
+      border-collapse: collapse;
       background: white;
       margin-top: 20px;
     }
     th, td {
-      border: 1px solid #ccc;
+      border: 1px solid #ddd;
       padding: 8px;
-      text-align: left;
     }
     th {
-      background-color: #eee;
-      cursor: pointer;
-    }
-    th.sorted-asc::after {
-      content: " ▲";
-      color: #555;
-    }
-    th.sorted-desc::after {
-      content: " ▼";
-      color: #555;
+      background-color: #f1f1f1;
     }
     input[type="number"] {
       width: 60px;
     }
+    select {
+      padding: 4px;
+    }
+    .controls {
+      margin-bottom: 20px;
+    }
+    button {
+      margin-right: 10px;
+      padding: 8px 12px;
+    }
   </style>
 </head>
 <body>
-  <h2>Inventory Viewer</h2>
+  <h2>Purchase Order Form</h2>
 
-  <label>Start Date: <input type="date" id="startDate" /></label>
-  <label>End Date: <input type="date" id="endDate" /></label>
-  <label>Search: <input type="text" id="searchInput" placeholder="Barcode, Item, Supplier" /></label>
-  <button onclick="fetchInventory()">View Inventory</button>
+  <!-- Replace with your actual deployed web app URL -->
+  <p><strong>Web App URL:</strong> <a href="https://script.google.com/macros/s/YOUR_DEPLOYED_WEBAPP_ID/exec" target="_blank">
+    https://script.google.com/macros/s/YOUR_DEPLOYED_WEBAPP_ID/exec</a></p>
+
+  <div class="controls">
+    <button onclick="fetchInventory()">Load Inventory</button>
+    <button onclick="submitOrder()">Submit Order</button>
+    <button onclick="downloadCSV()">Download CSV</button>
+  </div>
 
   <table id="inventoryTable">
     <thead>
       <tr>
-        <th onclick="sortTable(0)">Barcode</th>
-        <th onclick="sortTable(1)">Item Name</th>
-        <th onclick="sortTable(2)">Supplier</th>
-        <th onclick="sortTable(3)">Total Purchased</th>
-        <th onclick="sortTable(4)">Total Sold</th>
-        <th onclick="sortTable(5)">Current Inventory</th>
         <th>Order</th>
-        <th>Order Qty</th>
+        <th>Barcode</th>
+        <th>Item Name</th>
+        <th>Supplier</th>
+        <th>Purchase Price</th>
+        <th>Quantity</th>
         <th>Amount</th>
       </tr>
     </thead>
@@ -74,116 +68,125 @@
   </table>
 
   <script>
-    const API_URL = "https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec";
+    const API_URL = "https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec"; // Replace with your actual Web App URL
+
+    let lastFetchedData = [];
 
     function fetchInventory() {
-      const startDate = document.getElementById("startDate").value;
-      const endDate = document.getElementById("endDate").value;
-      const searchValue = document.getElementById("searchInput").value.toLowerCase();
-
-      if (!startDate || !endDate) {
-        alert("Please select both dates.");
-        return;
-      }
-
-      fetch(API_URL + `?startDate=${startDate}&endDate=${endDate}`)
+      fetch(API_URL)
         .then(res => res.json())
         .then(data => {
+          lastFetchedData = data;
           const tbody = document.querySelector("#inventoryTable tbody");
           tbody.innerHTML = "";
 
-          const filtered = data.filter(item => {
-            const matchBarcode = item.barcode?.toString().toLowerCase().includes(searchValue);
-            const matchName = item.name?.toString().toLowerCase().includes(searchValue);
-            const matchSupplier = item.supplier?.toString().toLowerCase().includes(searchValue);
-            return !searchValue || matchBarcode || matchName || matchSupplier;
-          });
-
-          filtered.forEach((item, index) => {
+          data.forEach((item, index) => {
             const row = document.createElement("tr");
 
             row.innerHTML = `
+              <td><input type="checkbox" onchange="toggleOrder(${index})" /></td>
               <td>${item.barcode}</td>
               <td>${item.name}</td>
-              <td>${item.supplier}</td>
-              <td>${item.totalPurchased}</td>
-              <td>${item.totalSold}</td>
-              <td>${item.currentInventory}</td>
-              <td><input type="checkbox" onchange="toggleOrder(${index})" id="order-${index}"></td>
-              <td><input type="number" id="qty-${index}" min="1" value="1" disabled oninput="updateAmount(${index}, ${item.purchasePrice})"></td>
-              <td id="amount-${index}">0.00</td>
+              <td>
+                <select onchange="updateSupplier(${index})">
+                  <option value="supplier" selected>${item.supplier}</option>
+                  <option value="alt">ALT SUPPLIER</option>
+                </select>
+              </td>
+              <td id="price-${index}">${item.purchasePrice || 0}</td>
+              <td><input type="number" id="qty-${index}" value="1" min="1" disabled onchange="updateAmount(${index})" /></td>
+              <td id="amount-${index}">0</td>
             `;
-
             tbody.appendChild(row);
           });
         });
     }
 
     function toggleOrder(index) {
-      const checkbox = document.getElementById(`order-${index}`);
+      const checkbox = document.querySelectorAll("input[type='checkbox']")[index];
       const qtyInput = document.getElementById(`qty-${index}`);
-      const amountCell = document.getElementById(`amount-${index}`);
-
-      if (checkbox.checked) {
-        qtyInput.disabled = false;
-        qtyInput.value = 1;
+      qtyInput.disabled = !checkbox.checked;
+      if (!checkbox.checked) {
+        document.getElementById(`amount-${index}`).textContent = "0";
+      } else {
         updateAmount(index);
-      } else {
-        qtyInput.disabled = true;
-        qtyInput.value = 0;
-        amountCell.innerText = "0.00";
       }
     }
 
-    function updateAmount(index, purchasePrice = 0) {
-      const qty = parseInt(document.getElementById(`qty-${index}`).value || "0");
-      const amountCell = document.getElementById(`amount-${index}`);
-      const checkbox = document.getElementById(`order-${index}`);
+    function updateSupplier(index) {
+      const select = document.querySelectorAll("select")[index];
+      const item = lastFetchedData[index];
+      const priceCell = document.getElementById(`price-${index}`);
 
-      if (checkbox.checked) {
-        const total = qty * purchasePrice;
-        amountCell.innerText = total.toFixed(2);
-      } else {
-        amountCell.innerText = "0.00";
+      const price = select.value === "alt" ? (item.altPrice || 0) : (item.purchasePrice || 0);
+      priceCell.textContent = price;
+
+      if (document.querySelectorAll("input[type='checkbox']")[index].checked) {
+        updateAmount(index);
       }
     }
 
-    function sortTable(columnIndex) {
-      const table = document.getElementById("inventoryTable");
-      const tbody = table.tBodies[0];
-      const rows = Array.from(tbody.rows);
+    function updateAmount(index) {
+      const qty = Number(document.getElementById(`qty-${index}`).value || 1);
+      const price = Number(document.getElementById(`price-${index}`).textContent || 0);
+      document.getElementById(`amount-${index}`).textContent = (qty * price).toFixed(2);
+    }
 
-      const isNumeric = !isNaN(rows[0].cells[columnIndex].innerText);
-      const headers = table.querySelectorAll("th");
-      let ascending = table.getAttribute("data-sort-dir") !== "asc";
-      let prevIndex = table.getAttribute("data-sort-index");
+    function submitOrder() {
+      const orders = [];
 
-      if (prevIndex == columnIndex) {
-        ascending = !ascending;
+      lastFetchedData.forEach((item, index) => {
+        const isChecked = document.querySelectorAll("input[type='checkbox']")[index].checked;
+        if (isChecked) {
+          const qty = Number(document.getElementById(`qty-${index}`).value || 1);
+          const amount = Number(document.getElementById(`amount-${index}`).textContent || 0);
+          const supplierType = document.querySelectorAll("select")[index].value;
+          const supplierName = supplierType === "alt" ? item.altSupplier : item.supplier;
+
+          orders.push({
+            barcode: item.barcode,
+            name: item.name,
+            supplier: supplierName,
+            qty,
+            price: supplierType === "alt" ? item.altPrice : item.purchasePrice,
+            amount
+          });
+        }
+      });
+
+      if (orders.length === 0) {
+        alert("No items selected.");
+        return;
       }
 
-      table.setAttribute("data-sort-dir", ascending ? "asc" : "desc");
-      table.setAttribute("data-sort-index", columnIndex);
+      google.script.run
+        .withSuccessHandler(() => alert("Order saved to PO sheet."))
+        .savePurchaseOrder(orders);
+    }
 
-      headers.forEach((th, i) => {
-        th.classList.remove("sorted-asc", "sorted-desc");
-        if (i == columnIndex) {
-          th.classList.add(ascending ? "sorted-asc" : "sorted-desc");
+    function downloadCSV() {
+      const rows = [["Barcode", "Item Name", "Supplier", "Quantity", "Price", "Amount"]];
+      lastFetchedData.forEach((item, index) => {
+        const isChecked = document.querySelectorAll("input[type='checkbox']")[index].checked;
+        if (isChecked) {
+          const qty = document.getElementById(`qty-${index}`).value;
+          const price = document.getElementById(`price-${index}`).textContent;
+          const amount = document.getElementById(`amount-${index}`).textContent;
+          const supplierType = document.querySelectorAll("select")[index].value;
+          const supplier = supplierType === "alt" ? item.altSupplier : item.supplier;
+
+          rows.push([item.barcode, item.name, supplier, qty, price, amount]);
         }
       });
 
-      rows.sort((a, b) => {
-        const valA = a.cells[columnIndex].innerText.trim();
-        const valB = b.cells[columnIndex].innerText.trim();
+      let csv = rows.map(row => row.join(",")).join("\n");
+      const blob = new Blob([csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
 
-        if (isNumeric) {
-          return ascending ? valA - valB : valB - valA;
-        } else {
-          return ascending ? valA.localeCompare(valB) : valB.localeCompare(valA);
-        }
-      });
-
-      rows.forEach(row => tbody.appendChild(row));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "purchase_order.csv";
+      link.click();
     }
   </script>
 </body>
