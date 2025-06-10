@@ -1,66 +1,48 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Inventory and Purchase Order</title>
+  <title>Inventory & Purchase Order</title>
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      margin: 10px;
+    body { font-family: Arial; padding: 20px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
+    th { background-color: #f4f4f4; }
+    .dropdown { position: relative; display: inline-block; }
+    .dropdown-content {
+      display: none; position: absolute; background-color: #f9f9f9;
+      border: 1px solid #ccc; padding: 10px; z-index: 1;
+      max-height: 200px; overflow-y: auto; min-width: 200px;
     }
-    #supplierFilterPopup {
-      position: absolute;
-      background: #fff;
-      border: 1px solid #ccc;
-      padding: 10px;
-      display: none;
-      z-index: 10;
-      max-height: 200px;
-      overflow-y: auto;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 15px;
-    }
-    th, td {
-      border: 1px solid #ddd;
-      padding: 6px;
-      text-align: center;
-    }
-    th {
-      background-color: #f2f2f2;
-    }
-    input[type="number"] {
-      width: 60px;
-    }
-    button {
-      margin: 8px 4px;
-      padding: 6px 12px;
-    }
+    .dropdown-content label { display: block; margin-bottom: 5px; }
+    .dropdown:hover .dropdown-content { display: block; }
+    .hidden { display: none; }
+    .view-toggle { margin-bottom: 15px; }
   </style>
 </head>
 <body>
-  <h2>Inventory and Purchase Order</h2>
+  <h2>Inventory & Purchase Order</h2>
 
-  <label><b>Filter by Supplier:</b></label>
-  <button onclick="toggleSupplierPopup()">Select Suppliers</button>
-  <div id="supplierFilterPopup"></div>
+  <div class="view-toggle">
+    <label><input type="radio" name="view" value="inventory" checked> Inventory</label>
+    <label><input type="radio" name="view" value="purchase"> Purchase Order</label>
+  </div>
 
-  <button onclick="submitOrders()">Submit Order</button>
-  <button onclick="downloadCSV()">Download CSV</button>
+  <div class="dropdown">
+    <button>Select Supplier</button>
+    <div class="dropdown-content" id="supplierDropdown"></div>
+  </div>
 
-  <table id="inventoryTable">
+  <table id="dataTable">
     <thead>
       <tr>
-        <th>Select/Order</th>
+        <th class="po-only hidden">Select</th>
         <th>Barcode</th>
         <th>Item Name</th>
         <th>Supplier</th>
-        <th>Purchase Price</th>
-        <th>Order Qty</th>
-        <th>Order Amount</th>
-        <th>Total Sold</th>
         <th>Current Inventory</th>
+        <th class="po-only hidden">Purchase Price</th>
+        <th class="po-only hidden">Order Qty</th>
+        <th class="po-only hidden">Order Amount</th>
       </tr>
     </thead>
     <tbody></tbody>
@@ -68,183 +50,127 @@
 
   <script>
     const API_URL = "https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec";
+    let supplierFilter = new Set();
+    let fullData = [];
 
-    let allData = [];
-    let selectedSuppliers = new Set();
+    document.querySelectorAll('input[name="view"]').forEach(radio => {
+      radio.addEventListener('change', toggleView);
+    });
 
-    async function fetchData() {
-      const res = await fetch(API_URL);
-      const data = await res.json();
-      allData = data;
-      populateSupplierFilter(data);
-      selectedSuppliers = new Set(getAllSuppliers(data));
+    function toggleView() {
+      const view = document.querySelector('input[name="view"]:checked').value;
+      const poColumns = document.querySelectorAll('.po-only');
+      poColumns.forEach(col => col.classList.toggle('hidden', view !== 'purchase'));
       renderTable();
     }
 
-    function getAllSuppliers(data) {
-      const set = new Set();
-      data.forEach(row => {
-        if (row.supplier) set.add(row.supplier);
-        if (row.altSupplier) set.add(row.altSupplier);
-      });
-      return Array.from(set);
+    function fetchData() {
+      fetch(API_URL)
+        .then(res => res.json())
+        .then(data => {
+          fullData = data;
+          renderSupplierFilter();
+          supplierFilter = new Set(data.map(row => row.supplier)); // select all by default
+          renderTable();
+        });
     }
 
-    function populateSupplierFilter(data) {
-      const popup = document.getElementById("supplierFilterPopup");
-      popup.innerHTML = "";
-
-      const suppliers = getAllSuppliers(data);
-      popup.innerHTML += `<label><input type="checkbox" id="selectAllSuppliers" onchange="toggleSelectAll(this)"> Select All</label><br>`;
+    function renderSupplierFilter() {
+      const dropdown = document.getElementById("supplierDropdown");
+      const suppliers = [...new Set(fullData.map(d => d.supplier))];
+      dropdown.innerHTML = `<label><input type="checkbox" id="selectAll" checked> Select All</label>`;
 
       suppliers.forEach(supplier => {
-        popup.innerHTML += `
-          <label><input type="checkbox" class="supplierCheckbox" value="${supplier}" checked onchange="updateSelectedSuppliers()"> ${supplier}</label><br>
-        `;
+        dropdown.innerHTML += `<label><input type="checkbox" class="supplier-checkbox" value="${supplier}" checked> ${supplier}</label>`;
       });
-    }
 
-    function toggleSupplierPopup() {
-      const popup = document.getElementById("supplierFilterPopup");
-      popup.style.display = popup.style.display === "block" ? "none" : "block";
-    }
-
-    function toggleSelectAll(cb) {
-      const all = document.querySelectorAll(".supplierCheckbox");
-      all.forEach(el => {
-        el.checked = cb.checked;
+      dropdown.querySelector('#selectAll').addEventListener('change', function() {
+        const checkboxes = dropdown.querySelectorAll('.supplier-checkbox');
+        checkboxes.forEach(cb => {
+          cb.checked = this.checked;
+          if (this.checked) supplierFilter.add(cb.value);
+          else supplierFilter.delete(cb.value);
+        });
+        renderTable();
       });
-      updateSelectedSuppliers();
-    }
 
-    function updateSelectedSuppliers() {
-      const checked = document.querySelectorAll(".supplierCheckbox:checked");
-      selectedSuppliers = new Set([...checked].map(cb => cb.value));
-      renderTable();
+      dropdown.querySelectorAll('.supplier-checkbox').forEach(cb => {
+        cb.addEventListener('change', function() {
+          if (this.checked) supplierFilter.add(this.value);
+          else supplierFilter.delete(this.value);
+
+          const allChecked = [...dropdown.querySelectorAll('.supplier-checkbox')].every(cb => cb.checked);
+          dropdown.querySelector('#selectAll').checked = allChecked;
+
+          renderTable();
+        });
+      });
     }
 
     function renderTable() {
-      const tbody = document.querySelector("#inventoryTable tbody");
+      const view = document.querySelector('input[name="view"]:checked').value;
+      const tbody = document.querySelector("#dataTable tbody");
       tbody.innerHTML = "";
 
-      const filtered = allData.filter(row =>
-        selectedSuppliers.has(row.supplier) || selectedSuppliers.has(row.altSupplier)
-      );
-
-      filtered.forEach((row, index) => {
-        const defaultSupplier = row.supplier || "";
-        const altSupplier = row.altSupplier || "";
-        const defaultPP = parseFloat(row.purchasePrice) || 0;
-        const altPP = parseFloat(row.altPurchasePrice) || 0;
-
+      fullData.filter(row => supplierFilter.has(row.supplier)).forEach(row => {
         const tr = document.createElement("tr");
 
-        tr.innerHTML = `
-          <td><input type="checkbox" onchange="toggleOrderQty(${index}, this)"></td>
+        const altSupplier = row.altSupplier;
+        const useAlt = false;
+        const selectedSupplier = useAlt ? altSupplier : row.supplier;
+        const purchasePrice = useAlt ? Number(row.altPurchasePrice) : Number(row.purchasePrice);
+
+        if (view === 'purchase') {
+          tr.innerHTML += `<td><input type="checkbox" class="select-item" data-barcode="${row.barcode}" checked></td>`;
+        }
+
+        tr.innerHTML += `
           <td>${row.barcode}</td>
           <td>${row.name}</td>
           <td>
-            <select onchange="updatePrice(${index}, this)">
-              <option value="main">${defaultSupplier}</option>
-              <option value="alt">${altSupplier}</option>
+            <select class="supplier-select">
+              <option value="main">${row.supplier}</option>
+              <option value="alt">${row.altSupplier || ""}</option>
             </select>
           </td>
-          <td class="purchasePrice" data-main="${defaultPP}" data-alt="${altPP}">${defaultPP.toFixed(2)}</td>
-          <td><input type="number" min="1" value="" oninput="updateAmount(${index})" disabled></td>
-          <td class="orderAmount">0.00</td>
-          <td>${row.totalSold || 0}</td>
-          <td>${row.currentInventory || 0}</td>
+          <td>${row.currentInventory}</td>
         `;
+
+        if (view === 'purchase') {
+          tr.innerHTML += `
+            <td class="price">${purchasePrice}</td>
+            <td><input type="number" class="order-qty" value="1" min="1"></td>
+            <td class="order-amount">${purchasePrice * 1}</td>
+          `;
+        }
 
         tbody.appendChild(tr);
       });
+
+      attachEvents();
     }
 
-    function toggleOrderQty(index, checkbox) {
-      const row = document.querySelectorAll("#inventoryTable tbody tr")[index];
-      const qtyInput = row.querySelector("input[type='number']");
-      qtyInput.disabled = !checkbox.checked;
-      if (checkbox.checked && !qtyInput.value) {
-        qtyInput.value = 1;
-        updateAmount(index);
-      } else if (!checkbox.checked) {
-        qtyInput.value = "";
-        row.querySelector(".orderAmount").textContent = "0.00";
-      }
-    }
+    function attachEvents() {
+      document.querySelectorAll('.supplier-select').forEach(select => {
+        select.addEventListener('change', function () {
+          const row = this.closest('tr');
+          const barcode = row.cells[1].textContent;
+          const data = fullData.find(d => d.barcode === barcode);
+          const price = this.value === 'alt' ? Number(data.altPurchasePrice) : Number(data.purchasePrice);
 
-    function updatePrice(index, select) {
-      const row = document.querySelectorAll("#inventoryTable tbody tr")[index];
-      const priceCell = row.querySelector(".purchasePrice");
-      const newPrice = select.value === "alt" ? priceCell.dataset.alt : priceCell.dataset.main;
-      priceCell.textContent = parseFloat(newPrice).toFixed(2);
-      updateAmount(index);
-    }
-
-    function updateAmount(index) {
-      const row = document.querySelectorAll("#inventoryTable tbody tr")[index];
-      const qty = parseFloat(row.querySelector("input[type='number']").value) || 0;
-      const price = parseFloat(row.querySelector(".purchasePrice").textContent) || 0;
-      const amount = qty * price;
-      row.querySelector(".orderAmount").textContent = amount.toFixed(2);
-    }
-
-    function submitOrders() {
-      const selected = [];
-      const rows = document.querySelectorAll("#inventoryTable tbody tr");
-      rows.forEach(row => {
-        const checkbox = row.querySelector("input[type='checkbox']");
-        if (!checkbox.checked) return;
-
-        const [barcode, name] = [row.children[1].textContent, row.children[2].textContent];
-        const supplier = row.querySelector("select").selectedOptions[0].textContent;
-        const qty = row.querySelector("input[type='number']").value;
-        const price = row.querySelector(".purchasePrice").textContent;
-        const amount = row.querySelector(".orderAmount").textContent;
-
-        selected.push({ barcode, name, supplier, quantity: qty, price, amount });
+          row.querySelector('.price').textContent = price;
+          const qty = Number(row.querySelector('.order-qty').value);
+          row.querySelector('.order-amount').textContent = price * qty;
+        });
       });
 
-      if (selected.length === 0) {
-        alert("No items selected.");
-        return;
-      }
-
-      fetch(API_URL, {
-        method: "POST",
-        body: JSON.stringify({ type: "savePO", orders: selected }),
-        headers: { "Content-Type": "application/json" }
-      }).then(res => res.text())
-        .then(msg => alert("Order submitted successfully."))
-        .catch(err => alert("Error submitting order"));
-    }
-
-    function downloadCSV() {
-      const rows = document.querySelectorAll("#inventoryTable tbody tr");
-      let csv = "Barcode,Item Name,Supplier,Purchase Price,Order Qty,Order Amount\n";
-
-      rows.forEach(row => {
-        const checkbox = row.querySelector("input[type='checkbox']");
-        if (!checkbox.checked) return;
-
-        const barcode = row.children[1].textContent;
-        const name = row.children[2].textContent;
-        const supplier = row.querySelector("select").selectedOptions[0].textContent;
-        const price = row.querySelector(".purchasePrice").textContent;
-        const qty = row.querySelector("input[type='number']").value;
-        const amount = row.querySelector(".orderAmount").textContent;
-
-        csv += `${barcode},${name},${supplier},${price},${qty},${amount}\n`;
+      document.querySelectorAll('.order-qty').forEach(input => {
+        input.addEventListener('input', function () {
+          const row = this.closest('tr');
+          const price = Number(row.querySelector('.price').textContent);
+          row.querySelector('.order-amount').textContent = price * Number(this.value);
+        });
       });
-
-      const blob = new Blob([csv], { type: "text/csv" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "purchase_order.csv";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
     }
 
     fetchData();
