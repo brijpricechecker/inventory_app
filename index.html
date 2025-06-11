@@ -20,7 +20,7 @@
       text-align: left;
     }
     .controls {
-      margin-bottom: 20px;
+      margin-bottom: 15px;
     }
     .checkbox-popup {
       position: absolute;
@@ -35,6 +35,17 @@
       font-weight: bold;
       margin-top: 10px;
     }
+    .highlight-zero {
+      background-color: #ffe5e5; /* very light red */
+    }
+    .search-container {
+      margin-bottom: 10px;
+    }
+    input[type="text"] {
+      padding: 6px;
+      width: 300px;
+      font-size: 14px;
+    }
   </style>
 </head>
 <body>
@@ -45,6 +56,10 @@
     <button id="toggleAltBtn">Use Alt Supplier</button>
     <button onclick="submitOrders()">Submit Orders</button>
     <button onclick="downloadCSV()">Download CSV</button>
+  </div>
+
+  <div class="search-container">
+    <input type="text" id="searchInput" placeholder="Search by Item Name or Barcode">
   </div>
 
   <div class="total-amount" id="totalAmountDisplay">Total Order Amount: $0.00</div>
@@ -68,10 +83,11 @@
   </table>
 
   <script>
-    const api_URL = 'https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec'; // Replace with your actual deployed Web App URL
+    const api_URL = 'https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec'; // Replace with your Web App URL
     let allItems = [];
     let selectedSuppliers = new Set();
     let useAlt = false;
+    let searchQuery = '';
 
     async function fetchData() {
       const res = await fetch(api_URL);
@@ -80,7 +96,7 @@
         !(item.totalSold === 0 && item.totalPurchased === 0)
       );
       populateSupplierFilter(data.suppliers);
-      selectedSuppliers = new Set(data.suppliers); // Select all by default
+      selectedSuppliers = new Set(data.suppliers);
       renderTable();
     }
 
@@ -124,7 +140,15 @@
 
         if (!selectedSuppliers.has(item.supplier1)) return;
 
+        const searchMatch =
+          item.name.toLowerCase().includes(searchQuery) ||
+          item.barcode.toLowerCase().includes(searchQuery);
+
+        if (!searchMatch) return;
+
         const tr = document.createElement('tr');
+        if (item.currentInventory == 0) tr.classList.add('highlight-zero');
+
         tr.innerHTML = `
           <td>${item.barcode}</td>
           <td>${item.name}</td>
@@ -160,6 +184,11 @@
       if (e.target.classList.contains('qtyInput')) {
         updateOrderAmounts();
       }
+    });
+
+    document.getElementById('searchInput').addEventListener('input', (e) => {
+      searchQuery = e.target.value.toLowerCase();
+      renderTable();
     });
 
     function submitOrders() {
