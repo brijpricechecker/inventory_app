@@ -226,34 +226,36 @@
         });
     }
 
-    function downloadCSV() {
-      const rows = document.querySelectorAll('#inventoryTable tbody tr');
-      const now = new Date();
-      const timestamp = now.toISOString().replace(/[:.-]/g, '_');
-      const supplierList = Array.from(selectedSuppliers).join('_').replace(/\s+/g, '');
-      const filename = `PO_${supplierList}_${timestamp}.csv`;
+function downloadCSV() {
+  const rows = document.querySelectorAll('#itemTableBody tr');
+  const now = new Date();
+  const timestamp = now.toLocaleString();
+  let csv = `Timestamp,Barcode,Item Name,Supplier,,Order Qty,Order Amount\n`;
 
-      let csv = "Barcode,Item Name,Supplier,Qty,Amount\n";
+  rows.forEach(row => {
+    const qty = Number(row.querySelector('.qty').value);
+    if (qty > 0) {
+      const barcode = row.cells[0].textContent;
+      const name = row.cells[1].textContent;
+      const supplier = row.cells[2].textContent;
+      const amount = row.querySelector('.amount').textContent.replace('PHP ', '');
+      
+      // Prevent barcode formatting issues by wrapping in ="123456789012"
+      const safeBarcode = `="${barcode}"`;
 
-      rows.forEach(row => {
-        const qty = parseInt(row.querySelector('.qtyInput').value) || 0;
-        if (qty > 0) {
-          const barcode = row.cells[0].textContent;
-          const name = row.cells[1].textContent;
-          const supplier = row.cells[2].textContent;
-          const amount = row.querySelector('.amount').textContent;
-          csv += `${barcode},${name},${supplier},${qty},${amount}\n`;
-        }
-      });
-
-      const blob = new Blob([csv], { type: 'text/csv' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
+      csv += `${timestamp},${safeBarcode},${name},${supplier},,${qty},PHP ${amount}\n`;
     }
+  });
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const supplierName = document.getElementById('supplierToggle').textContent.includes('Alt') ? 'AltSupplier' : 'MainSupplier';
+  const filename = `PurchaseOrders_${supplierName}_${now.toISOString().replace(/[:.]/g, '-')}.csv`;
+
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  link.click();
+}
 
     document.getElementById('supplierFilterBtn').addEventListener('click', () => {
       const popup = document.getElementById('supplierPopup');
