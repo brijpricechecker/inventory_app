@@ -1,179 +1,189 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Inventory & Purchase Order</title>
+  <title>RhoJet Purchase Order</title>
   <style>
-    body { font-family: Arial; padding: 20px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-    th, td { border: 1px solid #ccc; padding: 8px; text-align: center; }
-    th { background-color: #f4f4f4; }
-    .dropdown { position: relative; display: inline-block; }
-    .dropdown-content {
-      display: none; position: absolute; background-color: #f9f9f9;
-      border: 1px solid #ccc; padding: 10px; z-index: 1;
-      max-height: 200px; overflow-y: auto; min-width: 200px;
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      background: #f9f9f9;
     }
-    .dropdown-content label { display: block; margin-bottom: 5px; }
-    .dropdown:hover .dropdown-content { display: block; }
-    .hidden { display: none; }
-    .view-toggle { margin-bottom: 15px; }
+    h2 {
+      margin-bottom: 10px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      margin-top: 20px;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px;
+    }
+    th {
+      background-color: #f1f1f1;
+    }
+    input[type="number"] {
+      width: 60px;
+    }
+    select {
+      padding: 4px;
+    }
+    .controls {
+      margin-bottom: 20px;
+    }
+    button {
+      margin-right: 10px;
+      padding: 8px 12px;
+    }
   </style>
 </head>
 <body>
-  <h2>Inventory & Purchase Order</h2>
+  <h2>Purchase Order Form</h2>
 
-  <div class="view-toggle">
-    <label><input type="radio" name="view" value="inventory" checked> Inventory</label>
-    <label><input type="radio" name="view" value="purchase"> Purchase Order</label>
+  <div class="controls">
+    <button onclick="fetchInventory()">Load Inventory</button>
+    <button onclick="submitOrder()">Submit Order</button>
+    <button onclick="downloadCSV()">Download CSV</button>
   </div>
 
-  <div class="dropdown">
-    <button>Select Supplier</button>
-    <div class="dropdown-content" id="supplierDropdown"></div>
-  </div>
-
-  <table id="dataTable">
+  <table id="inventoryTable">
     <thead>
       <tr>
-        <th class="po-only hidden">Select</th>
+        <th>Order</th>
         <th>Barcode</th>
         <th>Item Name</th>
         <th>Supplier</th>
-        <th>Current Inventory</th>
-        <th class="po-only hidden">Purchase Price</th>
-        <th class="po-only hidden">Order Qty</th>
-        <th class="po-only hidden">Order Amount</th>
+        <th>Purchase Price</th>
+        <th>Quantity</th>
+        <th>Amount</th>
       </tr>
     </thead>
     <tbody></tbody>
   </table>
 
   <script>
-    const API_URL = "https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec";
-    let supplierFilter = new Set();
-    let fullData = [];
+    const API_URL = "https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec"; // Replace with your actual Web App URL
 
-    document.querySelectorAll('input[name="view"]').forEach(radio => {
-      radio.addEventListener('change', toggleView);
-    });
+    let lastFetchedData = [];
 
-    function toggleView() {
-      const view = document.querySelector('input[name="view"]:checked').value;
-      const poColumns = document.querySelectorAll('.po-only');
-      poColumns.forEach(col => col.classList.toggle('hidden', view !== 'purchase'));
-      renderTable();
-    }
-
-    function fetchData() {
+    function fetchInventory() {
       fetch(API_URL)
         .then(res => res.json())
         .then(data => {
-          fullData = data;
-          renderSupplierFilter();
-          supplierFilter = new Set(data.map(row => row.supplier)); // select all by default
-          renderTable();
+          lastFetchedData = data;
+          const tbody = document.querySelector("#inventoryTable tbody");
+          tbody.innerHTML = "";
+
+          data.forEach((item, index) => {
+            const row = document.createElement("tr");
+
+            row.innerHTML = `
+              <td><input type="checkbox" onchange="toggleOrder(${index})" /></td>
+              <td>${item.barcode}</td>
+              <td>${item.name}</td>
+              <td>
+                <select onchange="updateSupplier(${index})">
+                  <option value="supplier" selected>${item.supplier}</option>
+                  <option value="alt">ALT SUPPLIER</option>
+                </select>
+              </td>
+              <td id="price-${index}">${item.purchasePrice || 0}</td>
+              <td><input type="number" id="qty-${index}" value="1" min="1" disabled onchange="updateAmount(${index})" /></td>
+              <td id="amount-${index}">0</td>
+            `;
+            tbody.appendChild(row);
+          });
         });
     }
 
-    function renderSupplierFilter() {
-      const dropdown = document.getElementById("supplierDropdown");
-      const suppliers = [...new Set(fullData.map(d => d.supplier))];
-      dropdown.innerHTML = `<label><input type="checkbox" id="selectAll" checked> Select All</label>`;
-
-      suppliers.forEach(supplier => {
-        dropdown.innerHTML += `<label><input type="checkbox" class="supplier-checkbox" value="${supplier}" checked> ${supplier}</label>`;
-      });
-
-      dropdown.querySelector('#selectAll').addEventListener('change', function() {
-        const checkboxes = dropdown.querySelectorAll('.supplier-checkbox');
-        checkboxes.forEach(cb => {
-          cb.checked = this.checked;
-          if (this.checked) supplierFilter.add(cb.value);
-          else supplierFilter.delete(cb.value);
-        });
-        renderTable();
-      });
-
-      dropdown.querySelectorAll('.supplier-checkbox').forEach(cb => {
-        cb.addEventListener('change', function() {
-          if (this.checked) supplierFilter.add(this.value);
-          else supplierFilter.delete(this.value);
-
-          const allChecked = [...dropdown.querySelectorAll('.supplier-checkbox')].every(cb => cb.checked);
-          dropdown.querySelector('#selectAll').checked = allChecked;
-
-          renderTable();
-        });
-      });
+    function toggleOrder(index) {
+      const checkbox = document.querySelectorAll("input[type='checkbox']")[index];
+      const qtyInput = document.getElementById(`qty-${index}`);
+      qtyInput.disabled = !checkbox.checked;
+      if (!checkbox.checked) {
+        document.getElementById(`amount-${index}`).textContent = "0";
+      } else {
+        updateAmount(index);
+      }
     }
 
-    function renderTable() {
-      const view = document.querySelector('input[name="view"]:checked').value;
-      const tbody = document.querySelector("#dataTable tbody");
-      tbody.innerHTML = "";
+    function updateSupplier(index) {
+      const select = document.querySelectorAll("select")[index];
+      const item = lastFetchedData[index];
+      const priceCell = document.getElementById(`price-${index}`);
 
-      fullData.filter(row => supplierFilter.has(row.supplier)).forEach(row => {
-        const tr = document.createElement("tr");
+      const price = select.value === "alt" ? (item.altPrice || 0) : (item.purchasePrice || 0);
+      priceCell.textContent = price;
 
-        const altSupplier = row.altSupplier;
-        const useAlt = false;
-        const selectedSupplier = useAlt ? altSupplier : row.supplier;
-        const purchasePrice = useAlt ? Number(row.altPurchasePrice) : Number(row.purchasePrice);
+      if (document.querySelectorAll("input[type='checkbox']")[index].checked) {
+        updateAmount(index);
+      }
+    }
 
-        if (view === 'purchase') {
-          tr.innerHTML += `<td><input type="checkbox" class="select-item" data-barcode="${row.barcode}" checked></td>`;
+    function updateAmount(index) {
+      const qty = Number(document.getElementById(`qty-${index}`).value || 1);
+      const price = Number(document.getElementById(`price-${index}`).textContent || 0);
+      document.getElementById(`amount-${index}`).textContent = (qty * price).toFixed(2);
+    }
+
+    function submitOrder() {
+      const orders = [];
+
+      lastFetchedData.forEach((item, index) => {
+        const isChecked = document.querySelectorAll("input[type='checkbox']")[index].checked;
+        if (isChecked) {
+          const qty = Number(document.getElementById(`qty-${index}`).value || 1);
+          const amount = Number(document.getElementById(`amount-${index}`).textContent || 0);
+          const supplierType = document.querySelectorAll("select")[index].value;
+          const supplierName = supplierType === "alt" ? item.altSupplier : item.supplier;
+
+          orders.push({
+            barcode: item.barcode,
+            name: item.name,
+            supplier: supplierName,
+            qty,
+            price: supplierType === "alt" ? item.altPrice : item.purchasePrice,
+            amount
+          });
         }
+      });
 
-        tr.innerHTML += `
-          <td>${row.barcode}</td>
-          <td>${row.name}</td>
-          <td>
-            <select class="supplier-select">
-              <option value="main">${row.supplier}</option>
-              <option value="alt">${row.altSupplier || ""}</option>
-            </select>
-          </td>
-          <td>${row.currentInventory}</td>
-        `;
+      if (orders.length === 0) {
+        alert("No items selected.");
+        return;
+      }
 
-        if (view === 'purchase') {
-          tr.innerHTML += `
-            <td class="price">${purchasePrice}</td>
-            <td><input type="number" class="order-qty" value="1" min="1"></td>
-            <td class="order-amount">${purchasePrice * 1}</td>
-          `;
+      google.script.run
+        .withSuccessHandler(() => alert("Order saved to PO sheet."))
+        .savePurchaseOrder(orders);
+    }
+
+    function downloadCSV() {
+      const rows = [["Barcode", "Item Name", "Supplier", "Quantity", "Price", "Amount"]];
+      lastFetchedData.forEach((item, index) => {
+        const isChecked = document.querySelectorAll("input[type='checkbox']")[index].checked;
+        if (isChecked) {
+          const qty = document.getElementById(`qty-${index}`).value;
+          const price = document.getElementById(`price-${index}`).textContent;
+          const amount = document.getElementById(`amount-${index}`).textContent;
+          const supplierType = document.querySelectorAll("select")[index].value;
+          const supplier = supplierType === "alt" ? item.altSupplier : item.supplier;
+
+          rows.push([item.barcode, item.name, supplier, qty, price, amount]);
         }
-
-        tbody.appendChild(tr);
       });
 
-      attachEvents();
+      let csv = rows.map(row => row.join(",")).join("\n");
+      const blob = new Blob([csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = "purchase_order.csv";
+      link.click();
     }
-
-    function attachEvents() {
-      document.querySelectorAll('.supplier-select').forEach(select => {
-        select.addEventListener('change', function () {
-          const row = this.closest('tr');
-          const barcode = row.cells[1].textContent;
-          const data = fullData.find(d => d.barcode === barcode);
-          const price = this.value === 'alt' ? Number(data.altPurchasePrice) : Number(data.purchasePrice);
-
-          row.querySelector('.price').textContent = price;
-          const qty = Number(row.querySelector('.order-qty').value);
-          row.querySelector('.order-amount').textContent = price * qty;
-        });
-      });
-
-      document.querySelectorAll('.order-qty').forEach(input => {
-        input.addEventListener('input', function () {
-          const row = this.closest('tr');
-          const price = Number(row.querySelector('.price').textContent);
-          row.querySelector('.order-amount').textContent = price * Number(this.value);
-        });
-      });
-    }
-
-    fetchData();
   </script>
 </body>
 </html>
