@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Purchase Order System</title>
+  <title>Inventory and Purchase Order System</title>
   <style>
     body {
       font-family: Arial, sans-serif;
@@ -19,8 +19,14 @@
       border: 1px solid #ccc;
       text-align: left;
     }
-    .controls {
+    .top-bar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
       margin-bottom: 15px;
+    }
+    .controls button {
+      margin-right: 10px;
     }
     .checkbox-popup {
       position: absolute;
@@ -38,12 +44,9 @@
     .highlight-zero {
       background-color: #ffe5e5; /* very light red */
     }
-    .search-container {
-      margin-bottom: 10px;
-    }
     input[type="text"] {
       padding: 6px;
-      width: 300px;
+      width: 250px;
       font-size: 14px;
     }
   </style>
@@ -51,15 +54,16 @@
 <body>
   <h2>Purchase Order System</h2>
 
-  <div class="controls">
-    <button id="supplierFilterBtn">Filter Suppliers</button>
-    <button id="toggleAltBtn">Use Alt Supplier</button>
-    <button onclick="submitOrders()">Submit Orders</button>
-    <button onclick="downloadCSV()">Download CSV</button>
-  </div>
-
-  <div class="search-container">
-    <input type="text" id="searchInput" placeholder="Search by Item Name or Barcode">
+  <div class="top-bar">
+    <div class="controls">
+      <button id="supplierFilterBtn">Filter Suppliers</button>
+      <button id="toggleAltBtn">Use Alt Supplier</button>
+      <button onclick="submitOrders()">Submit Orders</button>
+      <button onclick="downloadCSV()">Download CSV</button>
+    </div>
+    <div class="search-container">
+      <input type="text" id="searchInput" placeholder="Search by Item Name or Barcode">
+    </div>
   </div>
 
   <div class="total-amount" id="totalAmountDisplay">Total Order Amount: $0.00</div>
@@ -117,6 +121,7 @@
         const checked = e.target.checked;
         document.querySelectorAll('.supplierCheckbox').forEach(cb => cb.checked = checked);
         selectedSuppliers = checked ? new Set(suppliers) : new Set();
+        popup.style.display = 'none';
         renderTable();
       });
 
@@ -124,6 +129,7 @@
         cb.addEventListener('change', () => {
           selectedSuppliers = new Set(Array.from(document.querySelectorAll('.supplierCheckbox:checked')).map(cb => cb.value));
           document.getElementById('selectAllBox').checked = selectedSuppliers.size === suppliers.length;
+          popup.style.display = 'none';
           renderTable();
         });
       });
@@ -177,7 +183,7 @@
         total += amount;
       });
 
-      document.getElementById('totalAmountDisplay').textContent = `Total Order Amount: $${total.toFixed(2)}`;
+      document.getElementById('totalAmountDisplay').textContent = `Total Order Amount: PHP${total.toFixed(2)}`;
     }
 
     document.addEventListener('input', (e) => {
@@ -263,4 +269,3 @@
   </script>
 </body>
 </html>
-
