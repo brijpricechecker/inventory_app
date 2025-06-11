@@ -1,204 +1,203 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Inventory & Purchase Orders</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <title>Inventory and Purchase Order</title>
   <style>
-    .supplier-filter-container {
-      position: relative;
+    body { font-family: Arial; padding: 20px; }
+    table, th, td { border: 1px solid #ddd; border-collapse: collapse; padding: 8px; }
+    table { width: 100%; margin-top: 10px; }
+    th { background-color: #f2f2f2; }
+    .controls { display: flex; gap: 10px; margin-bottom: 10px; }
+    .dropdown { position: relative; display: inline-block; }
+    .dropdown-content {
+      display: none; position: absolute; background-color: white; border: 1px solid #ccc;
+      max-height: 200px; overflow-y: auto; z-index: 1; padding: 10px;
     }
-    .dropdown-checkboxes {
-      position: absolute;
-      background: #fff;
-      border: 1px solid #ccc;
-      padding: 10px;
-      z-index: 999;
-      max-height: 200px;
-      overflow-y: auto;
-    }
-    .alt-supplier-btn {
-      margin-left: 10px;
-    }
+    .dropdown-content label { display: block; }
+    .dropdown.show .dropdown-content { display: block; }
+    button { padding: 8px 12px; cursor: pointer; }
   </style>
 </head>
-<body class="container py-4">
-  <div class="d-flex justify-content-between mb-3">
-    <div class="supplier-filter-container">
-      <button id="supplierFilterBtn" class="btn btn-outline-primary">Filter Suppliers</button>
-      <div id="supplierDropdown" class="dropdown-checkboxes d-none"></div>
+<body>
+
+  <div class="controls">
+    <div class="dropdown" id="supplierDropdown">
+      <button onclick="toggleDropdown()">Filter Suppliers</button>
+      <div class="dropdown-content" id="supplierList"></div>
     </div>
-    <button id="altSupplierBtn" class="btn btn-outline-secondary alt-supplier-btn">Use Alt Supplier</button>
+    <button onclick="toggleAltSupplier()">Use Alt Supplier</button>
+    <button onclick="submitOrders()">Submit Orders</button>
+    <button onclick="downloadCSV()">Download CSV</button>
   </div>
 
-  <div class="table-responsive">
-    <table id="inventoryTable" class="table table-bordered">
-      <thead>
-        <tr>
-          <th>Barcode</th>
-          <th>Item Name</th>
-          <th>Supplier</th>
-          <th>Purchase Price</th>
-          <th>Total Sold</th>
-          <th>Inventory</th>
-          <th>Order Qty</th>
-          <th>Order Amount</th>
-        </tr>
-      </thead>
-      <tbody></tbody>
-    </table>
-  </div>
+  <table id="inventoryTable">
+    <thead>
+      <tr>
+        <th>Barcode</th>
+        <th>Item Name</th>
+        <th>Supplier</th>
+        <th>Purchase Price</th>
+        <th>Total Sold</th>
+        <th>Current Inventory</th>
+        <th>Order Quantity</th>
+        <th>Order Amount</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
 
-  <div class="mt-3">
-    <button id="submitOrders" class="btn btn-success">Submit Orders</button>
-    <button id="downloadCSV" class="btn btn-secondary ms-2">Download CSV</button>
-    <span class="text-muted ms-3">App URL: <a href="" target="_blank" id="appUrlLink">Loading...</a></span>
-  </div>
+<script>
+  let allData = [];
+  let useAltSupplier = false;
 
-  <script>
-    let inventoryData = [];
-    let suppliers = [];
-    let useAltSupplier = false;
+  async function fetchData() {
+    const res = await fetch('https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec'); // Replace with your deployed Apps Script URL
+    const data = await res.json();
+    allData = data.items;
+    populateSupplierFilter(data.suppliers);
+    renderTable();
+  }
 
-    async function fetchData() {
-      const response = await fetch("/exec");
-      const json = await response.json();
-      inventoryData = json.items;
-      suppliers = json.suppliers;
-      populateSupplierDropdown();
-      renderTable();
-      document.getElementById("appUrlLink").href = window.location.href;
-      document.getElementById("appUrlLink").textContent = window.location.href;
+  function populateSupplierFilter(suppliers) {
+    const list = document.getElementById('supplierList');
+    list.innerHTML = '';
+    suppliers.forEach(sup => {
+      const id = `sup_${sup.replace(/\s+/g, '_')}`;
+      list.innerHTML += `
+        <label><input type="checkbox" value="${sup}" id="${id}" checked> ${sup}</label>
+      `;
+    });
+    document.addEventListener('click', (e) => {
+      const dropdown = document.getElementById('supplierDropdown');
+      if (!dropdown.contains(e.target)) dropdown.classList.remove('show');
+    });
+  }
+
+  function toggleDropdown() {
+    document.getElementById('supplierDropdown').classList.toggle('show');
+    renderTable();
+  }
+
+  function getSelectedSuppliers() {
+    const checkboxes = document.querySelectorAll('#supplierList input[type="checkbox"]');
+    return Array.from(checkboxes).filter(cb => cb.checked).map(cb => cb.value);
+  }
+
+  function toggleAltSupplier() {
+    useAltSupplier = !useAltSupplier;
+    renderTable();
+  }
+
+  function renderTable() {
+    const selectedSuppliers = getSelectedSuppliers();
+    const tbody = document.querySelector('#inventoryTable tbody');
+    tbody.innerHTML = '';
+
+    allData.forEach(item => {
+      const supplier = useAltSupplier ? item.supplier2 : item.supplier1;
+      const price = useAltSupplier ? (item.altPurchasePrice || 0) : item.purchasePrice;
+
+      if (!selectedSuppliers.includes(supplier)) return;
+
+      const tr = document.createElement('tr');
+
+      tr.innerHTML = `
+        <td>${item.barcode}</td>
+        <td>${item.name}</td>
+        <td>${supplier}</td>
+        <td>${price.toFixed(2)}</td>
+        <td>${item.totalSold}</td>
+        <td>${item.currentInventory}</td>
+        <td><input type="number" min="0" value="0" style="width:60px" onchange="updateAmount(this)"></td>
+        <td class="amount">0.00</td>
+      `;
+
+      tr.dataset.barcode = item.barcode;
+      tr.dataset.name = item.name;
+      tr.dataset.supplier = supplier;
+      tr.dataset.price = price;
+
+      tbody.appendChild(tr);
+    });
+  }
+
+  function updateAmount(input) {
+    const row = input.closest('tr');
+    const qty = parseFloat(input.value) || 0;
+    const price = parseFloat(row.dataset.price);
+    row.querySelector('.amount').textContent = (qty * price).toFixed(2);
+  }
+
+  async function submitOrders() {
+    const orders = [];
+    const rows = document.querySelectorAll('#inventoryTable tbody tr');
+
+    rows.forEach(row => {
+      const qty = parseFloat(row.querySelector('input').value) || 0;
+      if (qty <= 0) return;
+
+      orders.push({
+        barcode: row.dataset.barcode,
+        name: row.dataset.name,
+        supplier: row.dataset.supplier,
+        qty,
+        amount: (qty * parseFloat(row.dataset.price)).toFixed(2)
+      });
+    });
+
+    if (orders.length === 0) {
+      alert("No orders to submit.");
+      return;
     }
 
-    function populateSupplierDropdown() {
-      const dropdown = document.getElementById("supplierDropdown");
-      dropdown.innerHTML = "<label><input type='checkbox' id='selectAll' checked> Select All</label><br>";
-      suppliers.forEach(s => {
-        dropdown.innerHTML += `<label><input type='checkbox' class='supplierCheck' value="${s}" checked> ${s}</label><br>`;
-      });
+    await fetch('https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec', {
+      method: 'POST',
+      body: JSON.stringify({ orders }),
+      headers: { 'Content-Type': 'application/json' }
+    });
 
-      document.getElementById("selectAll").addEventListener("change", e => {
-        const checked = e.target.checked;
-        document.querySelectorAll(".supplierCheck").forEach(cb => cb.checked = checked);
-        renderTable();
-      });
+    alert("Orders submitted!");
+  }
 
-      dropdown.querySelectorAll(".supplierCheck").forEach(cb => {
-        cb.addEventListener("change", () => {
-          renderTable();
-        });
-      });
+  function downloadCSV() {
+    const rows = document.querySelectorAll('#inventoryTable tbody tr');
+    const csvRows = [["Barcode", "Item Name", "Supplier", "Qty", "Amount"]];
+    let supplierUsed = new Set();
+
+    rows.forEach(row => {
+      const qty = parseFloat(row.querySelector('input').value) || 0;
+      if (qty <= 0) return;
+
+      const barcode = row.dataset.barcode;
+      const name = row.dataset.name;
+      const supplier = row.dataset.supplier;
+      const amount = (qty * parseFloat(row.dataset.price)).toFixed(2);
+      supplierUsed.add(supplier);
+
+      csvRows.push([barcode, name, supplier, qty, amount]);
+    });
+
+    if (csvRows.length === 1) {
+      alert("No orders to download.");
+      return;
     }
 
-    function renderTable() {
-      const tbody = document.querySelector("#inventoryTable tbody");
-      tbody.innerHTML = "";
-      const selectedSuppliers = Array.from(document.querySelectorAll(".supplierCheck:checked")).map(cb => cb.value);
+    const now = new Date();
+    const timestamp = now.toISOString().replace(/[:\-T]/g, "").slice(0, 14);
+    const supplierTag = supplierUsed.size === 1 ? Array.from(supplierUsed)[0].replace(/\s+/g, "_") : "MULTI";
+    const filename = `PO_${timestamp}_${supplierTag}.csv`;
 
-      const filteredData = inventoryData.filter(item => {
-        const supplier = useAltSupplier ? item.supplier2 : item.supplier1;
-        return selectedSuppliers.includes(supplier);
-      });
+    const csvContent = csvRows.map(e => e.join(",")).join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv" });
+    const link = document.createElement("a");
 
-      filteredData.forEach(item => {
-        const supplier = useAltSupplier ? item.supplier2 : item.supplier1;
-        const price = useAltSupplier ? (Number(item.altPurchasePrice) || 0) : item.purchasePrice;
-        const row = document.createElement("tr");
-        row.innerHTML = `
-          <td>${item.barcode}</td>
-          <td>${item.name}</td>
-          <td>${supplier}</td>
-          <td class="price">${price.toFixed(2)}</td>
-          <td>${item.totalSold}</td>
-          <td>${item.currentInventory}</td>
-          <td><input type='number' min='0' class='form-control orderQty' data-barcode='${item.barcode}'></td>
-          <td class='amount'>0.00</td>
-        `;
-        tbody.appendChild(row);
-      });
+    link.href = URL.createObjectURL(blob);
+    link.download = filename;
+    link.click();
+  }
 
-      document.querySelectorAll(".orderQty").forEach(input => {
-        input.addEventListener("input", e => {
-          const row = e.target.closest("tr");
-          const qty = Number(e.target.value);
-          const price = Number(row.querySelector(".price").textContent);
-          row.querySelector(".amount").textContent = (qty * price).toFixed(2);
-        });
-      });
-    }
+  fetchData();
+</script>
 
-    document.getElementById("supplierFilterBtn").addEventListener("click", () => {
-      const dropdown = document.getElementById("supplierDropdown");
-      dropdown.classList.toggle("d-none");
-    });
-
-    document.getElementById("altSupplierBtn").addEventListener("click", () => {
-      useAltSupplier = !useAltSupplier;
-      document.getElementById("altSupplierBtn").classList.toggle("btn-secondary");
-      document.getElementById("altSupplierBtn").classList.toggle("btn-warning");
-      renderTable();
-    });
-
-    document.getElementById("submitOrders").addEventListener("click", async () => {
-      const orders = [];
-      document.querySelectorAll(".orderQty").forEach(input => {
-        const qty = Number(input.value);
-        if (qty > 0) {
-          const row = input.closest("tr");
-          orders.push({
-            barcode: row.cells[0].textContent,
-            name: row.cells[1].textContent,
-            supplier: row.cells[2].textContent,
-            qty,
-            amount: Number(row.cells[7].textContent)
-          });
-        }
-      });
-
-      if (orders.length === 0) return alert("No orders to submit.");
-
-      await fetch("/exec?action=save", {
-        method: "POST",
-        body: JSON.stringify(orders),
-        headers: { "Content-Type": "application/json" }
-      });
-
-      alert("Orders submitted!");
-      document.querySelectorAll(".orderQty").forEach(i => i.value = "");
-      document.querySelectorAll(".amount").forEach(a => a.textContent = "0.00");
-    });
-
-    document.getElementById("downloadCSV").addEventListener("click", () => {
-      let csv = "Barcode,Item Name,Supplier,Qty,Amount\n";
-      document.querySelectorAll(".orderQty").forEach(input => {
-        const qty = Number(input.value);
-        if (qty > 0) {
-          const row = input.closest("tr");
-          csv += [
-            row.cells[0].textContent,
-            row.cells[1].textContent,
-            row.cells[2].textContent,
-            qty,
-            row.cells[7].textContent
-          ].join(",") + "\n";
-        }
-      });
-      const blob = new Blob([csv], { type: 'text/csv' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = 'purchase_orders.csv';
-      link.click();
-    });
-
-    window.addEventListener("click", function(e) {
-      if (!document.getElementById("supplierFilterBtn").contains(e.target) &&
-          !document.getElementById("supplierDropdown").contains(e.target)) {
-        document.getElementById("supplierDropdown").classList.add("d-none");
-      }
-    });
-
-    fetchData();
-  </script>
 </body>
 </html>
