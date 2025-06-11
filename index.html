@@ -1,247 +1,204 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Inventory and Purchase Order</title>
+  <title>Inventory & Purchase Orders</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
   <style>
-    body {
-      font-family: Arial, sans-serif;
-      padding: 20px;
-    }
-    .btn {
-      padding: 6px 12px;
-      font-size: 14px;
-      margin-right: 10px;
-      cursor: pointer;
-    }
-    .filter-popup {
+    .supplier-filter-container {
       position: relative;
-      display: inline-block;
     }
-    .filter-popup-content {
-      display: none;
+    .dropdown-checkboxes {
       position: absolute;
-      background-color: #fff;
+      background: #fff;
       border: 1px solid #ccc;
-      z-index: 1;
+      padding: 10px;
+      z-index: 999;
       max-height: 200px;
       overflow-y: auto;
-      padding: 10px;
     }
-    .filter-popup.show .filter-popup-content {
-      display: block;
-    }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin-top: 10px;
-    }
-    th, td {
-      border: 1px solid #ddd;
-      padding: 6px;
-      text-align: left;
-    }
-    th {
-      background-color: #f4f4f4;
-    }
-    input[type="number"] {
-      width: 60px;
+    .alt-supplier-btn {
+      margin-left: 10px;
     }
   </style>
 </head>
-<body>
-  <h2>Inventory and Purchase Order</h2>
-
-  <div class="filter-popup">
-    <button class="btn" onclick="toggleFilter()">Filter Suppliers ⬇️</button>
-    <div class="filter-popup-content" id="supplierCheckboxes"></div>
+<body class="container py-4">
+  <div class="d-flex justify-content-between mb-3">
+    <div class="supplier-filter-container">
+      <button id="supplierFilterBtn" class="btn btn-outline-primary">Filter Suppliers</button>
+      <div id="supplierDropdown" class="dropdown-checkboxes d-none"></div>
+    </div>
+    <button id="altSupplierBtn" class="btn btn-outline-secondary alt-supplier-btn">Use Alt Supplier</button>
   </div>
 
-  <button class="btn" onclick="toggleAltSupplier()">Use Alt Supplier</button>
-  <button class="btn" onclick="submitOrder()">Submit Order</button>
-  <button class="btn" onclick="downloadCSV()">Download CSV</button>
+  <div class="table-responsive">
+    <table id="inventoryTable" class="table table-bordered">
+      <thead>
+        <tr>
+          <th>Barcode</th>
+          <th>Item Name</th>
+          <th>Supplier</th>
+          <th>Purchase Price</th>
+          <th>Total Sold</th>
+          <th>Inventory</th>
+          <th>Order Qty</th>
+          <th>Order Amount</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
 
-  <table id="inventoryTable">
-    <thead>
-      <tr>
-        <th>Select/Order</th>
-        <th>Barcode</th>
-        <th>Item Name</th>
-        <th>Supplier</th>
-        <th>Total Sold</th>
-        <th>Current Inventory</th>
-        <th>Purchase Price</th>
-        <th>Order Qty</th>
-        <th>Order Amount</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
+  <div class="mt-3">
+    <button id="submitOrders" class="btn btn-success">Submit Orders</button>
+    <button id="downloadCSV" class="btn btn-secondary ms-2">Download CSV</button>
+    <span class="text-muted ms-3">App URL: <a href="" target="_blank" id="appUrlLink">Loading...</a></span>
+  </div>
 
   <script>
-    const API_URL = "https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec"; // <-- Replace with your deployed Web App URL
     let inventoryData = [];
+    let suppliers = [];
     let useAltSupplier = false;
 
-    function toggleFilter() {
-      document.querySelector('.filter-popup').classList.toggle('show');
-    }
-
-    function toggleAltSupplier() {
-      useAltSupplier = !useAltSupplier;
-      renderTable(inventoryData);
-    }
-
-    async function fetchData(selectedSuppliers = []) {
-      const params = selectedSuppliers.length
-        ? `?suppliers=${encodeURIComponent(selectedSuppliers.join(','))}`
-        : "";
-      const res = await fetch(API_URL + params);
-      const json = await res.json();
-      if (!json.items) throw new Error("Invalid response from server");
+    async function fetchData() {
+      const response = await fetch("/exec");
+      const json = await response.json();
       inventoryData = json.items;
-      renderTable(inventoryData);
-      populateSupplierFilter(json.suppliers);
+      suppliers = json.suppliers;
+      populateSupplierDropdown();
+      renderTable();
+      document.getElementById("appUrlLink").href = window.location.href;
+      document.getElementById("appUrlLink").textContent = window.location.href;
     }
 
-    function renderTable(data) {
-      const tbody = document.querySelector("#inventoryTable tbody");
-      tbody.innerHTML = "";
+    function populateSupplierDropdown() {
+      const dropdown = document.getElementById("supplierDropdown");
+      dropdown.innerHTML = "<label><input type='checkbox' id='selectAll' checked> Select All</label><br>";
+      suppliers.forEach(s => {
+        dropdown.innerHTML += `<label><input type='checkbox' class='supplierCheck' value="${s}" checked> ${s}</label><br>`;
+      });
 
-      data.forEach((item, i) => {
-        const supplier = useAltSupplier ? (item.altSupplier || "") : (item.supplier1 || "");
-        const price = useAltSupplier ? (Number(item.altPP) || 0) : (Number(item.purchasePrice) || 0);
+      document.getElementById("selectAll").addEventListener("change", e => {
+        const checked = e.target.checked;
+        document.querySelectorAll(".supplierCheck").forEach(cb => cb.checked = checked);
+        renderTable();
+      });
 
-        const row = document.createElement("tr");
-        row.innerHTML = `
-          <td><input type="checkbox" onchange="toggleQtyInput(${i})" /></td>
-          <td>${item.barcode}</td>
-          <td>${item.name}</td>
-          <td>${supplier}</td>
-          <td>${item.totalSold}</td>
-          <td>${item.currentInventory}</td>
-          <td>${price.toFixed(2)}</td>
-          <td><input type="number" min="1" value="1" disabled onchange="updateAmount(${i})" /></td>
-          <td class="orderAmount">0</td>
-        `;
-        tbody.appendChild(row);
+      dropdown.querySelectorAll(".supplierCheck").forEach(cb => {
+        cb.addEventListener("change", () => {
+          renderTable();
+        });
       });
     }
 
-    function toggleQtyInput(index) {
-      const row = document.querySelectorAll("#inventoryTable tbody tr")[index];
-      const checkbox = row.querySelector("input[type='checkbox']");
-      const qtyInput = row.querySelector("input[type='number']");
-      qtyInput.disabled = !checkbox.checked;
-      if (checkbox.checked) updateAmount(index);
-      else row.querySelector(".orderAmount").textContent = "0";
+    function renderTable() {
+      const tbody = document.querySelector("#inventoryTable tbody");
+      tbody.innerHTML = "";
+      const selectedSuppliers = Array.from(document.querySelectorAll(".supplierCheck:checked")).map(cb => cb.value);
+
+      const filteredData = inventoryData.filter(item => {
+        const supplier = useAltSupplier ? item.supplier2 : item.supplier1;
+        return selectedSuppliers.includes(supplier);
+      });
+
+      filteredData.forEach(item => {
+        const supplier = useAltSupplier ? item.supplier2 : item.supplier1;
+        const price = useAltSupplier ? (Number(item.altPurchasePrice) || 0) : item.purchasePrice;
+        const row = document.createElement("tr");
+        row.innerHTML = `
+          <td>${item.barcode}</td>
+          <td>${item.name}</td>
+          <td>${supplier}</td>
+          <td class="price">${price.toFixed(2)}</td>
+          <td>${item.totalSold}</td>
+          <td>${item.currentInventory}</td>
+          <td><input type='number' min='0' class='form-control orderQty' data-barcode='${item.barcode}'></td>
+          <td class='amount'>0.00</td>
+        `;
+        tbody.appendChild(row);
+      });
+
+      document.querySelectorAll(".orderQty").forEach(input => {
+        input.addEventListener("input", e => {
+          const row = e.target.closest("tr");
+          const qty = Number(e.target.value);
+          const price = Number(row.querySelector(".price").textContent);
+          row.querySelector(".amount").textContent = (qty * price).toFixed(2);
+        });
+      });
     }
 
-    function updateAmount(index) {
-      const row = document.querySelectorAll("#inventoryTable tbody tr")[index];
-      const qty = Number(row.querySelector("input[type='number']").value) || 0;
-      const price = Number(row.cells[6].textContent) || 0;
-      row.querySelector(".orderAmount").textContent = (qty * price).toFixed(2);
-    }
+    document.getElementById("supplierFilterBtn").addEventListener("click", () => {
+      const dropdown = document.getElementById("supplierDropdown");
+      dropdown.classList.toggle("d-none");
+    });
 
-    function submitOrder() {
-      const rows = document.querySelectorAll("#inventoryTable tbody tr");
+    document.getElementById("altSupplierBtn").addEventListener("click", () => {
+      useAltSupplier = !useAltSupplier;
+      document.getElementById("altSupplierBtn").classList.toggle("btn-secondary");
+      document.getElementById("altSupplierBtn").classList.toggle("btn-warning");
+      renderTable();
+    });
+
+    document.getElementById("submitOrders").addEventListener("click", async () => {
       const orders = [];
-
-      rows.forEach(row => {
-        const checkbox = row.querySelector("input[type='checkbox']");
-        if (checkbox.checked) {
-          const cells = row.querySelectorAll("td");
-          const qty = Number(cells[7].querySelector("input").value);
-          const amount = Number(cells[8].textContent);
+      document.querySelectorAll(".orderQty").forEach(input => {
+        const qty = Number(input.value);
+        if (qty > 0) {
+          const row = input.closest("tr");
           orders.push({
-            barcode: cells[1].textContent.trim(),
-            name: cells[2].textContent.trim(),
-            supplier: cells[3].textContent.trim(),
+            barcode: row.cells[0].textContent,
+            name: row.cells[1].textContent,
+            supplier: row.cells[2].textContent,
             qty,
-            amount
+            amount: Number(row.cells[7].textContent)
           });
         }
       });
 
-      if (orders.length === 0) {
-        alert("Please select items to order.");
-        return;
-      }
+      if (orders.length === 0) return alert("No orders to submit.");
 
-      fetch(API_URL, {
+      await fetch("/exec?action=save", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ orders })
-      })
-      .then(res => res.text())
-      .then(msg => alert("Order submitted successfully!"))
-      .catch(err => {
-        console.error(err);
-        alert("Failed to submit order.");
+        body: JSON.stringify(orders),
+        headers: { "Content-Type": "application/json" }
       });
-    }
 
-    function downloadCSV() {
-      const rows = document.querySelectorAll("#inventoryTable tbody tr");
-      const csv = [["Barcode", "Item Name", "Supplier", "Qty", "Amount"]];
+      alert("Orders submitted!");
+      document.querySelectorAll(".orderQty").forEach(i => i.value = "");
+      document.querySelectorAll(".amount").forEach(a => a.textContent = "0.00");
+    });
 
-      rows.forEach(row => {
-        const checkbox = row.querySelector("input[type='checkbox']");
-        if (checkbox.checked) {
-          const cells = row.querySelectorAll("td");
-          const qty = cells[7].querySelector("input").value;
-          const amount = cells[8].textContent;
-          csv.push([
-            cells[1].textContent.trim(),
-            cells[2].textContent.trim(),
-            cells[3].textContent.trim(),
+    document.getElementById("downloadCSV").addEventListener("click", () => {
+      let csv = "Barcode,Item Name,Supplier,Qty,Amount\n";
+      document.querySelectorAll(".orderQty").forEach(input => {
+        const qty = Number(input.value);
+        if (qty > 0) {
+          const row = input.closest("tr");
+          csv += [
+            row.cells[0].textContent,
+            row.cells[1].textContent,
+            row.cells[2].textContent,
             qty,
-            amount
-          ]);
+            row.cells[7].textContent
+          ].join(",") + "\n";
         }
       });
-
-      const blob = new Blob([csv.map(row => row.join(",")).join("\n")], { type: "text/csv" });
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = "purchase_orders.csv";
+      const blob = new Blob([csv], { type: 'text/csv' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob);
+      link.download = 'purchase_orders.csv';
       link.click();
-      URL.revokeObjectURL(url);
-    }
+    });
 
-    function populateSupplierFilter(suppliers) {
-      const container = document.getElementById("supplierCheckboxes");
-      container.innerHTML = "";
+    window.addEventListener("click", function(e) {
+      if (!document.getElementById("supplierFilterBtn").contains(e.target) &&
+          !document.getElementById("supplierDropdown").contains(e.target)) {
+        document.getElementById("supplierDropdown").classList.add("d-none");
+      }
+    });
 
-      const allCheckbox = document.createElement("div");
-      allCheckbox.innerHTML = `<label><input type="checkbox" id="selectAll" checked> Select All</label>`;
-      container.appendChild(allCheckbox);
-
-      suppliers.forEach(supplier => {
-        const div = document.createElement("div");
-        div.innerHTML = `<label><input type="checkbox" class="supplierOption" value="${supplier}" checked> ${supplier}</label>`;
-        container.appendChild(div);
-      });
-
-      document.getElementById("selectAll").addEventListener("change", function () {
-        document.querySelectorAll(".supplierOption").forEach(cb => cb.checked = this.checked);
-        applyFilter();
-      });
-
-      document.querySelectorAll(".supplierOption").forEach(cb => {
-        cb.addEventListener("change", applyFilter);
-      });
-    }
-
-    function applyFilter() {
-      const selected = Array.from(document.querySelectorAll(".supplierOption:checked")).map(cb => cb.value);
-      fetchData(selected);
-    }
-
-    // Initial Load
     fetchData();
   </script>
 </body>
 </html>
-
