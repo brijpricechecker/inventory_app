@@ -1,278 +1,261 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Inventory and Purchase Order System</title>
+  <title>Inventory & Purchase Orders</title>
   <style>
     body {
       font-family: Arial, sans-serif;
-      padding: 20px;
+      padding: 10px;
+    }
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+    .controls {
+      display: flex;
+      gap: 10px;
+    }
+    .search-bar {
+      margin-left: auto;
+    }
+    #supplier-filter {
+      display: none;
+      position: absolute;
+      background: #fff;
+      border: 1px solid #ccc;
+      padding: 10px;
+      z-index: 1000;
     }
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 15px;
-    }
-    th, td {
-      padding: 8px;
-      border: 1px solid #ccc;
-      text-align: left;
-    }
-    .top-bar {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      margin-bottom: 15px;
-    }
-    .controls button {
-      margin-right: 10px;
-    }
-    .checkbox-popup {
-      position: absolute;
-      background: #fff;
-      border: 1px solid #ccc;
-      max-height: 200px;
-      overflow-y: auto;
-      z-index: 999;
-      padding: 10px;
-    }
-    .total-amount {
-      font-weight: bold;
       margin-top: 10px;
     }
-    .highlight-zero {
-      background-color: #ffe5e5; /* very light red */
+    th, td {
+      border: 1px solid #ccc;
+      padding: 5px;
+      text-align: left;
     }
-    input[type="text"] {
-      padding: 6px;
-      width: 250px;
-      font-size: 14px;
+    th {
+      background: #f0f0f0;
+    }
+    .zero-inventory {
+      background-color: #ffe5e5;
+    }
+    #total-order {
+      font-weight: bold;
+      margin-top: 10px;
     }
   </style>
 </head>
 <body>
-  <h2>Purchase Order System</h2>
-
-  <div class="top-bar">
+  <div class="header">
     <div class="controls">
-      <button id="supplierFilterBtn">Filter Suppliers</button>
-      <button id="toggleAltBtn">Use Alt Supplier</button>
+      <button onclick="toggleSupplierFilter()">Filter Suppliers</button>
+      <button onclick="toggleAltSupplier()">Use Alt Supplier</button>
       <button onclick="submitOrders()">Submit Orders</button>
       <button onclick="downloadCSV()">Download CSV</button>
     </div>
-    <div class="search-container">
-      <input type="text" id="searchInput" placeholder="Search by Item Name or Barcode">
-    </div>
+    <input class="search-bar" type="text" id="search" placeholder="Search item or barcode" oninput="renderTable()">
   </div>
 
-  <div class="total-amount" id="totalAmountDisplay">Total Order Amount: $0.00</div>
+  <div id="supplier-filter"></div>
 
-  <div id="supplierPopup" class="checkbox-popup" style="display:none;"></div>
+  <table id="data-table"></table>
 
-  <table id="inventoryTable">
-    <thead>
-      <tr>
-        <th>Barcode</th>
-        <th>Item Name</th>
-        <th>Supplier</th>
-        <th>Purchase Price</th>
-        <th>Total Sold</th>
-        <th>Current Inventory</th>
-        <th>Order Qty</th>
-        <th>Order Amount</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
+  <div id="total-order"></div>
 
   <script>
-    const api_URL = 'https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec'; // Replace with your Web App URL
-    let allItems = [];
-    let selectedSuppliers = new Set();
+    const apiUrl = 'https://script.google.com/macros/s/AKfycbzW4L7UzSpfI4ToovkZ3v8RmS8XQbnMjCBeVX4J_JEdWxVlKuhQ_pbfU3lvoog7sy2T/exec';
+
+    let allData = [];
+    let filteredSuppliers = [];
     let useAlt = false;
-    let searchQuery = '';
 
     async function fetchData() {
-      const res = await fetch(api_URL);
-      const data = await res.json();
-      allItems = data.items.filter(item =>
-        !(item.totalSold === 0 && item.totalPurchased === 0)
-      );
-      populateSupplierFilter(data.suppliers);
-      selectedSuppliers = new Set(data.suppliers);
+      const res = await fetch(apiUrl);
+      const json = await res.json();
+      allData = json.items;
+      renderSupplierFilter(json.suppliers);
+      filteredSuppliers = [...json.suppliers];
       renderTable();
     }
 
-    function populateSupplierFilter(suppliers) {
-      const popup = document.getElementById('supplierPopup');
-      popup.innerHTML = '';
-      const selectAll = document.createElement('div');
-      selectAll.innerHTML = `<label><input type="checkbox" id="selectAllBox" checked> Select All</label>`;
-      popup.appendChild(selectAll);
+    function renderSupplierFilter(suppliers) {
+      const container = document.getElementById('supplier-filter');
+      container.innerHTML = '';
+      const checkboxAll = document.createElement('input');
+      checkboxAll.type = 'checkbox';
+      checkboxAll.checked = true;
+      checkboxAll.id = 'selectAll';
+      const labelAll = document.createElement('label');
+      labelAll.textContent = 'Select All';
+      labelAll.prepend(checkboxAll);
+      container.appendChild(labelAll);
+      container.appendChild(document.createElement('br'));
 
-      suppliers.forEach(supplier => {
-        const div = document.createElement('div');
-        div.innerHTML = `<label><input type="checkbox" class="supplierCheckbox" value="${supplier}" checked> ${supplier}</label>`;
-        popup.appendChild(div);
-      });
-
-      document.getElementById('selectAllBox').addEventListener('change', (e) => {
-        const checked = e.target.checked;
-        document.querySelectorAll('.supplierCheckbox').forEach(cb => cb.checked = checked);
-        selectedSuppliers = checked ? new Set(suppliers) : new Set();
-        popup.style.display = 'none';
+      checkboxAll.addEventListener('change', () => {
+        document.querySelectorAll('#supplier-filter input[type=checkbox]').forEach(cb => {
+          cb.checked = checkboxAll.checked;
+        });
+        filteredSuppliers = checkboxAll.checked ? suppliers : [];
         renderTable();
       });
 
-      document.querySelectorAll('.supplierCheckbox').forEach(cb => {
-        cb.addEventListener('change', () => {
-          selectedSuppliers = new Set(Array.from(document.querySelectorAll('.supplierCheckbox:checked')).map(cb => cb.value));
-          document.getElementById('selectAllBox').checked = selectedSuppliers.size === suppliers.length;
-          popup.style.display = 'none';
+      suppliers.forEach(supplier => {
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.checked = true;
+        checkbox.dataset.supplier = supplier;
+        const label = document.createElement('label');
+        label.textContent = supplier;
+        label.prepend(checkbox);
+        container.appendChild(label);
+        container.appendChild(document.createElement('br'));
+
+        checkbox.addEventListener('change', () => {
+          const selected = Array.from(document.querySelectorAll('#supplier-filter input[data-supplier]:checked'))
+            .map(cb => cb.dataset.supplier);
+          filteredSuppliers = selected;
           renderTable();
+          container.style.display = 'none';
         });
       });
     }
 
-    function renderTable() {
-      const tbody = document.querySelector('#inventoryTable tbody');
-      tbody.innerHTML = '';
-      let totalAmount = 0;
-
-      allItems.forEach(item => {
-        const supplier = useAlt ? item.supplier2 : item.supplier1;
-        const price = useAlt ? (item.altPurchasePrice || 0) : (item.purchasePrice || 0);
-
-        if (!selectedSuppliers.has(item.supplier1)) return;
-
-        const searchMatch =
-          item.name.toLowerCase().includes(searchQuery) ||
-          item.barcode.toLowerCase().includes(searchQuery);
-
-        if (!searchMatch) return;
-
-        const tr = document.createElement('tr');
-        if (item.currentInventory == 0) tr.classList.add('highlight-zero');
-
-        tr.innerHTML = `
-          <td>${item.barcode}</td>
-          <td>${item.name}</td>
-          <td>${supplier || ''}</td>
-          <td class="price">${price.toFixed(2)}</td>
-          <td>${item.totalSold}</td>
-          <td>${item.currentInventory}</td>
-          <td><input type="number" class="qtyInput" min="0" value="0" style="width: 60px;"></td>
-          <td class="amount">0.00</td>
-        `;
-        tbody.appendChild(tr);
-      });
-
-      updateOrderAmounts();
+    function toggleSupplierFilter() {
+      const filterBox = document.getElementById('supplier-filter');
+      filterBox.style.display = filterBox.style.display === 'none' ? 'block' : 'none';
     }
 
-    function updateOrderAmounts() {
-      const rows = document.querySelectorAll('#inventoryTable tbody tr');
-      let total = 0;
-
-      rows.forEach(row => {
-        const price = parseFloat(row.querySelector('.price').textContent);
-        const qty = parseInt(row.querySelector('.qtyInput').value) || 0;
-        const amount = qty * price;
-        row.querySelector('.amount').textContent = amount.toFixed(2);
-        total += amount;
-      });
-
-      document.getElementById('totalAmountDisplay').textContent = `Total Order Amount: PHP${total.toFixed(2)}`;
-    }
-
-    document.addEventListener('input', (e) => {
-      if (e.target.classList.contains('qtyInput')) {
-        updateOrderAmounts();
-      }
-    });
-
-    document.getElementById('searchInput').addEventListener('input', (e) => {
-      searchQuery = e.target.value.toLowerCase();
+    function toggleAltSupplier() {
+      useAlt = !useAlt;
       renderTable();
-    });
+    }
+
+    function renderTable() {
+      const table = document.getElementById('data-table');
+      const search = document.getElementById('search').value.toLowerCase();
+      let totalOrder = 0;
+      let html = `
+        <tr>
+          <th>Date</th>
+          <th>Barcode</th>
+          <th>Item Name</th>
+          <th></th>
+          <th>Supplier</th>
+          <th>Purchase Price (PHP)</th>
+          <th>Order Quantity</th>
+          <th>Order Amount (PHP)</th>
+        </tr>
+      `;
+
+      const now = new Date();
+      const dateStr = `${now.getMonth()+1}/${now.getDate()}/${now.getFullYear()} ${now.toLocaleTimeString()}`;
+
+      allData.filter(item => {
+        const supplier = useAlt ? item.supplier2 : item.supplier1;
+        return filteredSuppliers.includes(item.supplier1) &&
+               (item.name.toLowerCase().includes(search) || item.barcode.includes(search)) &&
+               !(item.totalSold === 0 && item.totalPurchased === 0);
+      }).forEach(item => {
+        const supplier = useAlt ? item.supplier2 : item.supplier1;
+        const price = useAlt ? item.altPurchasePrice : item.purchasePrice;
+        const rowClass = item.currentInventory === 0 ? 'zero-inventory' : '';
+        html += `
+          <tr class="${rowClass}">
+            <td>${dateStr}</td>
+            <td>${item.barcode}</td>
+            <td>${item.name}</td>
+            <td></td>
+            <td>${supplier}</td>
+            <td>${price}</td>
+            <td><input type="number" min="0" value="0" onchange="updateAmount(this)"></td>
+            <td class="amount">0</td>
+          </tr>
+        `;
+      });
+
+      table.innerHTML = html;
+      updateTotal();
+    }
+
+    function updateAmount(input) {
+      const row = input.closest('tr');
+      const price = parseFloat(row.children[5].textContent);
+      const qty = parseInt(input.value) || 0;
+      const amount = qty * price;
+      row.querySelector('.amount').textContent = amount.toFixed(2);
+      updateTotal();
+    }
+
+    function updateTotal() {
+      let total = 0;
+      document.querySelectorAll('.amount').forEach(cell => {
+        total += parseFloat(cell.textContent) || 0;
+      });
+      document.getElementById('total-order').textContent = `Total Order Amount: PHP ${total.toFixed(2)}`;
+    }
 
     function submitOrders() {
-      const rows = document.querySelectorAll('#inventoryTable tbody tr');
+      const rows = document.querySelectorAll('#data-table tr');
       const orders = [];
-
-      rows.forEach(row => {
-        const qty = parseInt(row.querySelector('.qtyInput').value) || 0;
+      rows.forEach((row, idx) => {
+        if (idx === 0) return;
+        const qty = parseInt(row.children[6].querySelector('input')?.value || 0);
         if (qty > 0) {
           orders.push({
-            barcode: row.cells[0].textContent,
-            name: row.cells[1].textContent,
-            supplier: row.cells[2].textContent,
+            barcode: row.children[1].textContent,
+            name: row.children[2].textContent,
+            supplier: row.children[4].textContent,
             qty,
-            amount: parseFloat(row.querySelector('.amount').textContent)
+            amount: parseFloat(row.children[7].textContent)
           });
         }
       });
 
-      if (orders.length === 0) return alert('No orders to submit.');
-
-      fetch(api_URL, {
-        method: 'POST',
-        body: JSON.stringify(orders),
-        headers: { 'Content-Type': 'application/json' }
-      }).then(res => res.text())
-        .then(res => {
-          alert('Orders submitted successfully!');
-        });
+      google.script.run.savePurchaseOrders(orders);
+      alert('Orders submitted!');
     }
 
     function downloadCSV() {
-      const rows = [['Date', 'Barcode', 'Item Name', '', 'Supplier', 'Purchase Price', 'Order Quantity', 'Total Order Amount']];
+      const rows = document.querySelectorAll('#data-table tr');
       const now = new Date();
-      const timestamp = `${now.getMonth() + 1}/${now.getDate()}/${now.getFullYear()} ${now.toLocaleTimeString('en-US', { hour12: false })}`;
-      let supplierForFile = selectedSuppliers.length === 1 ? selectedSuppliers[0] : 'Multiple';
-      let filename = `PO_${supplierForFile}_${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${now.getHours()}-${now.getMinutes()}.csv`;
+      const dateStr = `${now.getMonth()+1}-${now.getDate()}-${now.getFullYear()}_${now.getHours()}-${now.getMinutes()}`;
+      const supplierLabel = useAlt ? '_Alt' : '';
+      const fileName = `PO_${dateStr}${supplierLabel}.csv`;
+      const csv = ['Date,Barcode,Item Name,,Supplier,PURCHASE PRICE,Order Quantity,Total order amount'];
 
-      document.querySelectorAll('#tableBody tr').forEach(row => {
-        const cells = row.querySelectorAll('td');
-        const qty = Number(cells[5].querySelector('input').value);
-        const price = parseFloat(cells[4].textContent) || 0;
-        const total = qty * price;
+      rows.forEach((row, idx) => {
+        if (idx === 0) return;
+        const qty = parseInt(row.children[6].querySelector('input')?.value || 0);
         if (qty > 0) {
-          rows.push([
-            timestamp,
-            `="${cells[0].textContent}"`,
-            cells[1].textContent,
+          const rowData = [
+            row.children[0].textContent,
+            `"${row.children[1].textContent}"`,
+            row.children[2].textContent,
             '',
-            cells[3].textContent,
-            price.toFixed(2),
+            row.children[4].textContent,
+            row.children[5].textContent,
             qty,
-            total.toFixed(2)
-          ]);
+            row.children[7].textContent
+          ];
+          csv.push(rowData.join(','));
         }
       });
 
-      const csvContent = rows.map(e => e.join(",")).join("\n");
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const blob = new Blob([csv.join('\n')], { type: 'text/csv' });
       const link = document.createElement('a');
-      link.setAttribute('href', URL.createObjectURL(blob));
-      link.setAttribute('download', filename);
+      link.href = URL.createObjectURL(blob);
+      link.download = fileName;
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
     }
 
-    document.getElementById('supplierFilterBtn').addEventListener('click', () => {
-      const popup = document.getElementById('supplierPopup');
-      popup.style.display = popup.style.display === 'none' ? 'block' : 'none';
-    });
-
-    document.getElementById('toggleAltBtn').addEventListener('click', () => {
-      useAlt = !useAlt;
-      renderTable();
-    });
-
-    window.onload = fetchData;
+    fetchData();
   </script>
 </body>
 </html>
