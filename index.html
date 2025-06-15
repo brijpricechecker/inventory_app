@@ -96,18 +96,28 @@
     let allSuppliers = [];
     let orderData = {}; // key: barcode, value: { qty, amount }
 
+    window.onload = async () => {
+      const res = await fetch(`${apiUrl}?mode=suppliersOnly`);
+      const data = await res.json();
+      allSuppliers = data.suppliers;
+      selectedSuppliers = [...allSuppliers];
+      renderSupplierDropdown();
+      fetchData(true); // inventory mode by default
+    };
+
     async function fetchData(isInventoryMode) {
+      if (!isInventoryMode && selectedSuppliers.length === 0) {
+        allItems = [];
+        renderTable();
+        return;
+      }
       let url = `${apiUrl}?mode=${isInventoryMode ? 'inventory' : 'po'}&suppliers=${encodeURIComponent(JSON.stringify(selectedSuppliers))}`;
       const res = await fetch(url);
       const data = await res.json();
 
-      allSuppliers = data.suppliers;
-      renderSupplierDropdown();
-
       if (isInventoryMode) {
         allItems = data.items;
       } else {
-        // Preserve existing order data
         const newItems = data.items.filter(item => !allItems.some(ai => ai.barcode === item.barcode));
         allItems = [...allItems, ...newItems];
       }
@@ -117,13 +127,15 @@
     function renderSupplierDropdown() {
       const container = document.getElementById('supplierList');
       container.innerHTML = '';
+
       const allBox = document.createElement('input');
       allBox.type = 'checkbox';
       allBox.id = 'selectAllSuppliers';
       allBox.checked = selectedSuppliers.length === allSuppliers.length;
       allBox.onchange = () => {
         selectedSuppliers = allBox.checked ? [...allSuppliers] : [];
-        fetchData(isPO);
+        fetchData(!isPO);
+        container.classList.remove('show');
       };
       container.appendChild(allBox);
       container.appendChild(document.createTextNode('Select All'));
@@ -141,7 +153,8 @@
             selectedSuppliers = selectedSuppliers.filter(s => s !== supplier);
           }
           document.getElementById('selectAllSuppliers').checked = selectedSuppliers.length === allSuppliers.length;
-          fetchData(isPO);
+          fetchData(!isPO);
+          container.classList.remove('show');
         };
         label.appendChild(checkbox);
         label.appendChild(document.createTextNode(supplier));
@@ -163,6 +176,11 @@
       allItems = [];
       orderData = {};
       document.getElementById('modeToggle').textContent = isPO ? 'Inventory' : 'Purchase Order';
+      if (!isPO) {
+        selectedSuppliers = [...allSuppliers];
+      } else {
+        selectedSuppliers = [];
+      }
       fetchData(!isPO);
     }
 
@@ -268,10 +286,6 @@
       link.click();
       document.body.removeChild(link);
     }
-
-    window.onload = () => {
-      fetchData(true);
-    };
   </script>
 </body>
 </html>
