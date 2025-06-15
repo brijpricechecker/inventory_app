@@ -4,223 +4,237 @@
   <title>Inventory & Purchase Order</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 20px; }
+    .controls { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; margin-bottom: 10px; }
+    .left-controls, .right-controls { display: flex; align-items: center; gap: 10px; }
+    .highlight-zero { background-color: #ffe5e5; }
     table { width: 100%; border-collapse: collapse; margin-top: 10px; }
     th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-    th { background-color: #f4f4f4; }
-    .checkbox-dropdown { position: relative; display: inline-block; }
-    .checkbox-dropdown-list {
-      display: none; position: absolute; background-color: #fff; border: 1px solid #ccc;
-      padding: 10px; z-index: 1000; max-height: 200px; overflow-y: auto;
-    }
-    .checkbox-dropdown-list label { display: block; }
-    .search-bar { margin-top: 10px; }
+    #totalAmountCell { font-weight: bold; margin-top: 10px; }
+    .hidden { display: none; }
   </style>
 </head>
 <body>
-  <h2>Inventory & Purchase Order</h2>
 
-  <!-- Supplier Filter -->
-  <div>
-    <label>Suppliers:</label>
-    <div class="checkbox-dropdown" id="supplierDropdown">
-      <button onclick="toggleSupplierDropdown()">Select Suppliers</button>
-      <div class="checkbox-dropdown-list" id="supplierList"></div>
-    </div>
+<div class="controls">
+  <div class="left-controls">
+    <button onclick="switchToInventory()">Inventory</button>
+    <button onclick="switchToPO()">Purchase Order</button>
+    <button onclick="toggleAltSupplier()" id="altBtn" class="hidden">Use Alt Supplier</button>
+    <div id="supplierFilter"></div>
+    <button onclick="submitOrders()" id="submitBtn" class="hidden">Submit Orders</button>
+    <button onclick="downloadCSV()" id="csvBtn" class="hidden">Download CSV</button>
   </div>
-
-  <!-- Alt Supplier Toggle -->
-  <div style="margin-top:10px">
-    <label><input type="checkbox" id="altSupplierToggle" onchange="toggleAltSupplier()"> Use Alt Supplier</label>
+  <div class="right-controls">
+    <input type="text" id="searchBar" placeholder="Search by name or barcode" onkeyup="renderTable()">
   </div>
+</div>
 
-  <!-- Search bar to filter table -->
-  <div class="search-bar">
-    <input type="text" id="searchBar" placeholder="Search by barcode or name" oninput="renderTable()">
-  </div>
+<div id="totalAmountCell" class="hidden">Total Order Amount: PHP 0.00</div>
 
-  <!-- Add Item by Barcode or Name -->
-  <div class="search-bar">
-    <input type="text" id="addItemSearch" placeholder="Add item by barcode or name">
-    <button onclick="searchMasterItem()">Search & Add</button>
-  </div>
+<table>
+  <thead>
+    <tr id="tableHeaders"></tr>
+  </thead>
+  <tbody id="tableBody"></tbody>
+</table>
 
-  <!-- Search Results Popup -->
-  <div id="searchResultsPopup" style="display:none; position:absolute; top:150px; left:50%; transform:translateX(-50%); background:#fff; border:1px solid #ccc; padding:10px; z-index:10; max-height:300px; overflow-y:auto; box-shadow:0 0 10px rgba(0,0,0,0.1);">
-    <h4>Select Items to Add</h4>
-    <div id="searchResultsList"></div>
-    <button onclick="addSelectedItems()">Add Selected</button>
-    <button onclick="closeSearchPopup()">Cancel</button>
-  </div>
+<script>
+  const apiUrl = 'https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec';
+  let allItems = [], filteredItems = [];
+  let selectedSuppliers = [], useAlt = false;
+  let isPO = false;
 
-  <!-- Inventory Table -->
-  <table id="inventoryTable">
-    <thead>
-      <tr>
-        <th>Barcode</th><th>Item Name</th><th>Supplier</th>
-        <th>Purchase Price</th><th>Order Quantity</th><th>Order Amount</th>
-      </tr>
-    </thead>
-    <tbody></tbody>
-  </table>
+  async function fetchData() {
+    const res = await fetch(apiUrl);
+    const data = await res.json();
+    allItems = data.allItems;
+    filteredItems = data.items;
+    selectedSuppliers = [...data.suppliers];
+    setupSupplierFilter(data.suppliers);
+    renderTable();
+  }
 
-  <!-- Submit & Download -->
-  <button onclick="submitOrder()">Submit Order</button>
-  <button onclick="downloadCSV()">Download CSV</button>
-  <p>Web App URL: <span id="webAppUrl"></span></p>
+  function setupSupplierFilter(suppliers) {
+    const container = document.getElementById('supplierFilter');
+    container.innerHTML = '';
+    const dropdown = document.createElement('select');
+    dropdown.multiple = true;
+    dropdown.size = Math.min(suppliers.length + 1, 8);
 
-  <script>
-    const apiUrl = 'https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec';
-    let allItems = [], selectedSuppliers = [], useAltSupplier = false, fullMaster = [];
+    suppliers.forEach(supplier => {
+      const option = document.createElement('option');
+      option.value = supplier;
+      option.text = supplier;
+      option.selected = true;
+      dropdown.appendChild(option);
+    });
 
-    async function fetchData() {
-      const res = await fetch(apiUrl);
-      const data = await res.json();
-      allItems = data.items.filter(item => item.totalSold !== 0 || item.totalPurchased !== 0);
-      fullMaster = data.master || [];
-      setupSupplierFilter(data.suppliers);
-      selectedSuppliers = [...data.suppliers];
+    dropdown.onchange = () => {
+      selectedSuppliers = Array.from(dropdown.selectedOptions).map(opt => opt.value);
       renderTable();
-      document.getElementById('webAppUrl').innerText = apiUrl;
-    }
+    };
 
-    function setupSupplierFilter(suppliers) {
-      const list = document.getElementById('supplierList');
-      list.innerHTML = '<label><input type="checkbox" onchange="toggleSelectAllSuppliers(this)" checked> Select All</label><br>';
-      suppliers.forEach(supplier => {
-        const id = `supplier-${supplier}`;
-        list.innerHTML += `<label><input type="checkbox" id="${id}" value="${supplier}" checked onchange="filterBySupplier()"> ${supplier}</label><br>`;
-      });
-    }
+    container.appendChild(dropdown);
+  }
 
-    function toggleSupplierDropdown() {
-      const list = document.getElementById('supplierList');
-      list.style.display = list.style.display === 'block' ? 'none' : 'block';
-    }
+  function switchToPO() {
+    isPO = true;
+    document.getElementById('altBtn').classList.remove('hidden');
+    document.getElementById('submitBtn').classList.remove('hidden');
+    document.getElementById('csvBtn').classList.remove('hidden');
+    document.getElementById('totalAmountCell').classList.remove('hidden');
+    renderTable();
+  }
 
-    function toggleSelectAllSuppliers(checkbox) {
-      const boxes = document.querySelectorAll('#supplierList input[type="checkbox"]');
-      boxes.forEach((cb, i) => { if (i > 0) cb.checked = checkbox.checked; });
-      filterBySupplier();
-    }
+  function switchToInventory() {
+    isPO = false;
+    document.getElementById('altBtn').classList.add('hidden');
+    document.getElementById('submitBtn').classList.add('hidden');
+    document.getElementById('csvBtn').classList.add('hidden');
+    document.getElementById('totalAmountCell').classList.add('hidden');
+    renderTable();
+  }
 
-    function filterBySupplier() {
-      const checked = [...document.querySelectorAll('#supplierList input[type="checkbox"]')]
-        .filter(cb => cb.checked && cb.value)
-        .map(cb => cb.value);
-      selectedSuppliers = checked;
-      renderTable();
-    }
+  function toggleAltSupplier() {
+    useAlt = !useAlt;
+    renderTable();
+  }
 
-    function toggleAltSupplier() {
-      useAltSupplier = document.getElementById('altSupplierToggle').checked;
-      renderTable();
-    }
+  function renderTable() {
+    const items = isPO ? allItems : filteredItems;
+    const query = document.getElementById('searchBar').value.toLowerCase();
+    const tbody = document.getElementById('tableBody');
+    const thead = document.getElementById('tableHeaders');
+    tbody.innerHTML = '';
+    thead.innerHTML = '';
 
-    function renderTable() {
-      const query = document.getElementById('searchBar').value.toLowerCase();
-      const tbody = document.querySelector('#inventoryTable tbody');
-      tbody.innerHTML = '';
-      allItems.filter(item =>
-        (selectedSuppliers.includes(item.supplier1) || selectedSuppliers.includes(item.supplier2)) &&
-        (item.barcode.toLowerCase().includes(query) || item.name.toLowerCase().includes(query))
-      ).forEach(item => {
-        const supplier = useAltSupplier ? item.supplier2 : item.supplier1;
-        const price = useAltSupplier ? item.altPurchasePrice : item.purchasePrice;
-        tbody.innerHTML += `
-          <tr>
-            <td>${item.barcode}</td>
-            <td>${item.name}</td>
-            <td>${supplier}</td>
-            <td>${price}</td>
-            <td><input type="number" min="0" value="" onchange="updateOrderAmount(this)"></td>
-            <td class="orderAmount"></td>
-          </tr>
-        `;
-      });
+    // Build headers
+    const baseHeaders = ['Barcode', 'Item Name', 'Current Inventory', 'Supplier', 'Purchase Price'];
+    if (isPO) {
+      baseHeaders.push('Order Quantity', 'Order Amount');
+    } else {
+      baseHeaders.push('Inventory Amount');
     }
+    baseHeaders.forEach(h => {
+      const th = document.createElement('th');
+      th.textContent = h;
+      thead.appendChild(th);
+    });
 
-    function updateOrderAmount(input) {
-      const row = input.closest('tr');
-      const price = parseFloat(row.children[3].innerText);
-      const qty = parseFloat(input.value);
-      row.querySelector('.orderAmount').innerText = isNaN(qty) ? '' : (price * qty).toFixed(2);
-    }
+    let total = 0;
 
-    function submitOrder() {
-      const rows = document.querySelectorAll('#inventoryTable tbody tr');
-      const orders = [...rows].map(row => {
-        const [barcode, name, supplier, price, qtyInput] = row.children;
-        const qty = qtyInput.querySelector('input').value;
-        return qty ? {
-          barcode: barcode.innerText,
-          name: name.innerText,
-          supplier: supplier.innerText,
-          purchasePrice: price.innerText,
-          quantity: qty,
-          orderAmount: row.querySelector('.orderAmount').innerText
-        } : null;
-      }).filter(Boolean);
-      if (!orders.length) return alert('No items to submit.');
-      fetch(apiUrl, {
-        method: 'POST',
-        body: JSON.stringify({ orders })
-      }).then(r => r.text()).then(alert);
-    }
+    items.forEach(item => {
+      if (!selectedSuppliers.includes(item.supplier1)) return;
+      if (query &&
+        !item.name.toLowerCase().includes(query) &&
+        !item.barcode.toLowerCase().includes(query)) return;
 
-    function downloadCSV() {
-      const rows = [['Barcode','Item Name','Supplier','Purchase Price','Quantity','Order Amount']];
-      document.querySelectorAll('#inventoryTable tbody tr').forEach(row => {
-        const cells = [...row.children];
-        const qty = cells[4].querySelector('input').value;
-        if (qty) rows.push([cells[0].innerText, cells[1].innerText, cells[2].innerText, cells[3].innerText, qty, cells[5].innerText]);
-      });
-      const csv = rows.map(r => r.join(',')).join('\n');
-      const blob = new Blob([csv], { type: 'text/csv' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'purchase_order.csv';
-      a.click();
-    }
+      const supplier = useAlt ? (item.supplier2 || item.supplier1) : item.supplier1;
+      const price = useAlt ? (item.altPurchasePrice || item.purchasePrice) : item.purchasePrice;
+      const tr = document.createElement('tr');
+      if (item.currentInventory === 0) tr.classList.add('highlight-zero');
 
-    function searchMasterItem() {
-      const query = document.getElementById('addItemSearch').value.toLowerCase();
-      const resultList = document.getElementById('searchResultsList');
-      resultList.innerHTML = '';
-      const matches = fullMaster.filter(item =>
-        item.barcode.toLowerCase().includes(query) ||
-        item.name.toLowerCase().includes(query)
-      );
-      if (!matches.length) {
-        resultList.innerHTML = '<p>No matches found.</p>';
+      const cells = [
+        item.barcode,
+        item.name,
+        item.currentInventory,
+        supplier,
+        price.toFixed(2)
+      ];
+
+      if (isPO) {
+        cells.push(`<input type="number" min="0" value="0" onchange="updateAmount(this)">`);
+        cells.push(`<span class="amount">0.00</span>`);
       } else {
-        matches.forEach((item, index) => {
-          const label = document.createElement('label');
-          label.innerHTML = `<input type="checkbox" value="${index}"> ${item.barcode} - ${item.name} (${item.supplier1})`;
-          resultList.appendChild(label);
-          resultList.appendChild(document.createElement('br'));
-        });
+        cells.push((item.currentInventory * price).toFixed(2));
       }
-      document.getElementById('searchResultsPopup').style.display = 'block';
-    }
 
-    function closeSearchPopup() {
-      document.getElementById('searchResultsPopup').style.display = 'none';
-    }
+      tr.innerHTML = cells.map(c => `<td>${c}</td>`).join('');
+      tbody.appendChild(tr);
+    });
 
-    function addSelectedItems() {
-      const checkboxes = document.querySelectorAll('#searchResultsList input[type="checkbox"]:checked');
-      checkboxes.forEach(cb => {
-        const item = fullMaster[cb.value];
-        if (!allItems.find(i => i.barcode === item.barcode)) {
-          allItems.push(item);
+    updateTotalAmount();
+  }
+
+  function updateAmount(input) {
+    const row = input.closest('tr');
+    const price = parseFloat(row.children[4].textContent);
+    const qty = parseInt(input.value) || 0;
+    const amount = price * qty;
+    row.querySelector('.amount').textContent = amount.toFixed(2);
+    updateTotalAmount();
+  }
+
+  function updateTotalAmount() {
+    let total = 0;
+    document.querySelectorAll('.amount').forEach(el => {
+      total += parseFloat(el.textContent);
+    });
+    document.getElementById('totalAmountCell').textContent = `Total Order Amount: PHP ${total.toFixed(2)}`;
+  }
+
+  function submitOrders() {
+    const orders = [];
+    document.querySelectorAll('#tableBody tr').forEach(row => {
+      const qtyInput = row.children[5]?.querySelector('input');
+      if (qtyInput) {
+        const qty = parseInt(qtyInput.value);
+        if (qty > 0) {
+          orders.push({
+            barcode: row.children[0].textContent,
+            name: row.children[1].textContent,
+            supplier: row.children[3].textContent,
+            qty,
+            amount: parseFloat(row.children[6].textContent)
+          });
         }
-      });
-      closeSearchPopup();
-      renderTable();
-    }
+      }
+    });
+    if (orders.length === 0) return alert('No orders to submit.');
+    google.script.run.savePurchaseOrders(orders);
+    alert('Orders submitted successfully!');
+  }
 
-    fetchData();
-  </script>
+  function downloadCSV() {
+    const rows = [['Date', 'Barcode', 'Item Name', '', 'Supplier', 'Purchase Price', 'Order Quantity', 'Total Order Amount']];
+    const now = new Date();
+    const timestamp = `${now.getMonth() + 1}/${now.getDate()}/${now.getFullYear()} ${now.toLocaleTimeString('en-US', { hour12: false })}`;
+    let supplierForFile = selectedSuppliers.length === 1 ? selectedSuppliers[0] : 'Multiple';
+    let filename = `PO_${supplierForFile}_${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}_${now.getHours()}-${now.getMinutes()}.csv`;
+
+    document.querySelectorAll('#tableBody tr').forEach(row => {
+      const cells = row.querySelectorAll('td');
+      const qtyInput = cells[5]?.querySelector('input');
+      if (qtyInput) {
+        const qty = Number(qtyInput.value);
+        const price = parseFloat(cells[4].textContent);
+        const total = qty * price;
+        if (qty > 0) {
+          rows.push([
+            timestamp,
+            `="${cells[0].textContent}"`,
+            cells[1].textContent,
+            '',
+            cells[3].textContent,
+            price.toFixed(2),
+            qty,
+            total.toFixed(2)
+          ]);
+        }
+      }
+    });
+
+    const csvContent = rows.map(e => e.join(",")).join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const link = document.createElement('a');
+    link.setAttribute('href', URL.createObjectURL(blob));
+    link.setAttribute('download', filename);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
+  fetchData();
+</script>
 </body>
 </html>
