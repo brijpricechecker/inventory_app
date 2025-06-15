@@ -80,8 +80,8 @@
         <th>Current Inventory</th>
         <th>Supplier</th>
         <th>Purchase Price</th>
-        <th>Order Quantity</th>
-        <th>Order Amount</th>
+        <th id="qtyHeader">Order Quantity</th>
+        <th id="amountHeader">Order/Inventory Amount</th>
       </tr>
     </thead>
     <tbody id="tableBody"></tbody>
@@ -94,7 +94,7 @@
     let useAlt = false;
     let isPO = false;
     let allSuppliers = [];
-    let orderData = {}; // key: barcode, value: { qty, amount }
+    let orderData = {};
 
     window.onload = async () => {
       const res = await fetch(`${apiUrl}?mode=suppliersOnly`);
@@ -102,7 +102,7 @@
       allSuppliers = data.suppliers;
       selectedSuppliers = [...allSuppliers];
       renderSupplierDropdown();
-      fetchData(true); // inventory mode by default
+      fetchData(true);
     };
 
     async function fetchData(isInventoryMode) {
@@ -189,8 +189,11 @@
       tbody.innerHTML = '';
       const search = document.getElementById('searchBar').value.toLowerCase();
 
+      document.getElementById('qtyHeader').style.display = isPO ? '' : 'none';
+      document.getElementById('amountHeader').textContent = isPO ? 'Order Amount' : 'Inventory Amount';
+
       allItems
-        .filter(item => selectedSuppliers.includes(item.supplier1))
+        .filter(item => isPO ? selectedSuppliers.includes(item.supplier1) : true)
         .filter(item => item.name.toLowerCase().includes(search) || item.barcode.includes(search))
         .sort((a, b) => {
           const sA = (useAlt ? a.supplier2 || a.supplier1 : a.supplier1).toLowerCase();
@@ -203,7 +206,8 @@
           const price = useAlt ? item.altPurchasePrice || item.purchasePrice : item.purchasePrice;
           const barcode = item.barcode;
           const savedQty = orderData[barcode]?.qty || 0;
-          const amount = price * savedQty;
+          const orderAmount = price * savedQty;
+          const inventoryAmount = price * item.currentInventory;
 
           const tr = document.createElement('tr');
           if (item.currentInventory === 0) tr.classList.add('highlight-zero');
@@ -215,11 +219,14 @@
             <td>${item.currentInventory}</td>
             <td>${supplier}</td>
             <td>${price.toFixed(2)}</td>
-            <td><input type="number" min="0" value="${savedQty}" onchange="updateQty(this, '${barcode}', ${price})"></td>
-            <td class="amount">${amount.toFixed(2)}</td>
+            <td style="display:${isPO ? '' : 'none'}">
+              <input type="number" min="0" value="${savedQty}" onchange="updateQty(this, '${barcode}', ${price})">
+            </td>
+            <td class="amount">${(isPO ? orderAmount : inventoryAmount).toFixed(2)}</td>
           `;
           tbody.appendChild(tr);
         });
+
       updateTotalAmount();
     }
 
@@ -230,6 +237,10 @@
     }
 
     function updateTotalAmount() {
+      if (!isPO) {
+        document.getElementById('totalAmountCell').textContent = '';
+        return;
+      }
       let total = 0;
       Object.values(orderData).forEach(o => total += o.amount);
       document.getElementById('totalAmountCell').textContent = `Total Order Amount: PHP ${total.toFixed(2)}`;
