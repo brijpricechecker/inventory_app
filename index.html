@@ -50,13 +50,14 @@
 <div id="tableContainer"></div>
 
 <script>
-  const apiUrl = 'https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec'; // Replace with your Apps Script URL
+  const apiUrl = 'https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec'; // replace with your deployed Apps Script URL
   let allItems = [];
   let orderData = {};
   let selectedSuppliers = [];
   let isPO = false;
   let useAlt = false;
   let currentSort = { column: '', asc: true };
+  let allSuppliers = [];
 
   document.getElementById('modeToggle').onclick = () => {
     isPO = !isPO;
@@ -79,7 +80,7 @@
   document.getElementById('submitBtn').onclick = async () => {
     const orders = Object.values(orderData);
     if (orders.length === 0) return alert('No orders to submit.');
-    await fetch(`${apiUrl}`, {
+    await fetch(apiUrl, {
       method: 'POST',
       body: JSON.stringify({ orders }),
       headers: { 'Content-Type': 'application/json' }
@@ -90,6 +91,7 @@
   };
 
   function updateSupplierFilter(suppliers) {
+    allSuppliers = suppliers;
     const container = document.getElementById('supplierFilter');
     container.innerHTML = '';
 
@@ -110,7 +112,7 @@
         const chk = document.getElementById('chk_' + s.replace(/\s+/g, '_'));
         return chk && chk.checked;
       });
-      fetchData();
+      fetchData(); // refetch data
     }
 
     document.getElementById(selectAllId).onchange = (e) => {
@@ -144,50 +146,35 @@
     renderTable();
   }
 
-  function toggleSort(column) {
-    if (currentSort.column === column) {
-      currentSort.asc = !currentSort.asc;
-    } else {
-      currentSort.column = column;
-      currentSort.asc = true;
-    }
-    renderTable();
-  }
-
   function renderTable() {
     const container = document.getElementById('tableContainer');
-    if (allItems.length === 0) {
+    if (!allItems || allItems.length === 0) {
       container.innerHTML = '<p>No data found.</p>';
       return;
-    }
-
-    const sortedItems = [...allItems];
-    if (currentSort.column === 'inventory') {
-      sortedItems.sort((a, b) => {
-        const valA = a.currentInventory || 0;
-        const valB = b.currentInventory || 0;
-        return currentSort.asc ? valA - valB : valB - valA;
-      });
     }
 
     let html = `<table><thead><tr>
       <th>Barcode</th><th>Item Name</th><th>Supplier</th><th>Purchase Price</th>`;
 
     if (isPO) {
-      html += `<th onclick="toggleSort('inventory')">Current Inventory &#x21C5;</th><th>Order Qty</th><th>Order Amount</th>`;
+      html += `<th>Current Inventory</th><th>Order Qty</th><th>Order Amount</th>`;
     } else {
-      html += `<th onclick="toggleSort('inventory')">Inventory &#x21C5;</th><th>Value</th>`;
+      html += `<th>Inventory</th><th>Value</th>`;
     }
 
     html += `</tr></thead><tbody>`;
 
-    sortedItems.forEach(item => {
+    allItems.forEach(item => {
       const supplier = useAlt ? item.supplier2 : item.supplier1;
       const price = useAlt ? item.altPurchasePrice : item.purchasePrice;
       const inv = item.currentInventory || 0;
       const isOrdered = !!orderData[item.barcode];
 
-      let row = `<tr${isPO && isOrdered ? ' class="highlight"' : ''}>`;
+      let rowClass = '';
+      if (isPO && isOrdered) rowClass = 'highlight';
+      if (!isPO && inv === 0) rowClass = 'highlight';
+
+      let row = `<tr class="${rowClass}">`;
       row += `<td>'${item.barcode}</td>`;
       row += `<td>${item.name}</td>`;
       row += `<td>${supplier}</td>`;
@@ -195,11 +182,11 @@
 
       if (isPO) {
         const qty = orderData[item.barcode]?.qty || '';
-        const amt = orderData[item.barcode]?.amount || 0;
+        const amt = orderData[item.barcode]?.amount || '';
         row += `<td>${inv}</td>`;
-        row += `<td><input type="number" min="0" step="1" value="${qty}"
-          onfocus="this.select()" oninput="captureQty('${item.barcode}', this.value, ${price})"
-          onkeydown="event.stopPropagation();"></td>`;
+        row += `<td><input type="number" min="0" step="1" value="${qty}" 
+          oninput="captureQty('${item.barcode}', this.value, ${price})"
+          onfocus="this.select()" onkeydown="event.stopPropagation();"></td>`;
         row += `<td>${amt ? amt.toFixed(2) : ''}</td>`;
       } else {
         row += `<td>${inv}</td>`;
@@ -213,11 +200,6 @@
     html += `</tbody></table>`;
     container.innerHTML = html;
     updateTotal();
-  }
-
-  function updateTotal() {
-    const total = Object.values(orderData).reduce((sum, o) => sum + o.amount, 0);
-    document.getElementById('totalOrder').textContent = isPO ? `Total Order Amount: ₱${total.toFixed(2)}` : '';
   }
 
   let qtyTimeout;
@@ -241,13 +223,18 @@
       }
       updateTotal();
       renderTable();
-    }, 300);
+    }, 200);
+  }
+
+  function updateTotal() {
+    const total = Object.values(orderData).reduce((sum, o) => sum + o.amount, 0);
+    document.getElementById('totalOrder').textContent = isPO ? `Total Order Amount: ₱${total.toFixed(2)}` : '';
   }
 
   function exportToCSV() {
     const rows = [];
     const today = new Date();
-    const dateStr = today.toISOString().split('T')[0]; // yyyy-mm-dd
+    const dateStr = today.toISOString().split('T')[0];
     const supplierStr = selectedSuppliers.length === 1 ? selectedSuppliers[0].replace(/\s+/g, '_') : 'multiple';
     const filename = isPO ? `PO_${dateStr}_${supplierStr}.csv` : `inventory_${dateStr}_${supplierStr}.csv`;
 
@@ -294,6 +281,5 @@
 
   fetchData();
 </script>
-
 </body>
 </html>
