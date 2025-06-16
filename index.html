@@ -2,105 +2,65 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Inventory & Purchase Order</title>
   <style>
-    body { font-family: Arial, sans-serif; margin: 20px; }
-    h1 { margin-bottom: 10px; }
+    body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
+    h1 { font-size: 24px; }
+    .controls { margin-bottom: 10px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .dropdown { position: relative; display: inline-block; }
+    .dropdown-content {
+      display: none; position: absolute; background-color: #fff; min-width: 200px;
+      box-shadow: 0px 4px 8px rgba(0,0,0,0.1); padding: 10px; z-index: 1;
+      max-height: 300px; overflow-y: auto; border: 1px solid #ccc;
+    }
+    .dropdown-content label { display: block; margin: 5px 0; }
+    .dropdown-content input[type="checkbox"] { margin-right: 5px; }
+    .dropdown.show .dropdown-content { display: block; }
     table { width: 100%; border-collapse: collapse; margin-top: 10px; }
     th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-    th.sortable:hover { cursor: pointer; background-color: #f0f0f0; }
-    .zero-inventory { background-color: #ffe5e5; }
-    .filter-group { margin-bottom: 10px; display: flex; align-items: center; gap: 15px; }
-    .checkbox-popup {
-      border: 1px solid #ccc;
-      padding: 10px;
-      max-height: 200px;
-      overflow-y: auto;
-      position: absolute;
-      background: white;
-      z-index: 10;
-      display: none;
-    }
-    .checkbox-popup label { display: block; margin-top: 5px; }
-    .total-order { font-weight: bold; margin-top: 10px; }
-    button { margin-right: 10px; padding: 6px 12px; }
-    .mode-button.active { font-weight: bold; background-color: #007bff; color: white; border: none; }
-    .mode-button { border: 1px solid #ccc; background: #f9f9f9; }
+    th.sortable { cursor: pointer; }
+    .zero-inventory { background-color: #ffe5e5; } /* light red */
+    .btn { padding: 6px 12px; cursor: pointer; border: 1px solid #ccc; background: #f0f0f0; }
+    #totalAmountDisplay { margin-top: 10px; font-weight: bold; }
   </style>
 </head>
 <body>
-
   <h1>Inventory & Purchase Order</h1>
-
-  <div class="filter-group">
-    <div>
-      <button id="inventoryBtn" class="mode-button active">Inventory</button>
-      <button id="poBtn" class="mode-button">Purchase Order</button>
+  <div class="controls">
+    <button class="btn" onclick="setMode('inventory')">Inventory</button>
+    <button class="btn" onclick="setMode('po')">Purchase Order</button>
+    
+    <div class="dropdown">
+      <button class="btn" onclick="toggleDropdown()">Select Suppliers ▼</button>
+      <div class="dropdown-content" id="supplierList"></div>
     </div>
-
-    <div style="position: relative;">
-      <button id="supplierFilterBtn">Filter Suppliers</button>
-      <div id="supplierList" class="checkbox-popup"></div>
-    </div>
-
-    <button onclick="exportCSV()">Export CSV</button>
+    
+    <button class="btn" onclick="exportCSV()">Export CSV</button>
+    <span id="totalAmountDisplay" style="display:none;"></span>
   </div>
 
-  <div class="total-order" id="totalOrder" style="display: none;"></div>
-
-  <table id="dataTable">
+  <table id="itemTable">
     <thead>
-      <tr id="tableHead"></tr>
+      <tr id="tableHeaders"></tr>
     </thead>
-    <tbody id="tableBody"></tbody>
+    <tbody></tbody>
   </table>
 
   <script>
-    let items = [];
-    let selectedSuppliers = [];
+    let mode = 'inventory';
     let allSuppliers = [];
-    let currentMode = 'inventory';
+    let selectedSuppliers = [];
+    let currentItems = [];
     let inventorySortAsc = true;
 
-    document.getElementById('inventoryBtn').addEventListener('click', () => {
-      currentMode = 'inventory';
-      updateModeButtons();
+    function setMode(newMode) {
+      mode = newMode;
+      document.getElementById('totalAmountDisplay').style.display = (mode === 'po') ? 'block' : 'none';
       fetchData();
-    });
-
-    document.getElementById('poBtn').addEventListener('click', () => {
-      currentMode = 'po';
-      updateModeButtons();
-      fetchData();
-    });
-
-    function updateModeButtons() {
-      document.getElementById('inventoryBtn').classList.toggle('active', currentMode === 'inventory');
-      document.getElementById('poBtn').classList.toggle('active', currentMode === 'po');
     }
 
-    document.getElementById('supplierFilterBtn').addEventListener('click', () => {
-      const popup = document.getElementById('supplierList');
-      popup.style.display = popup.style.display === 'block' ? 'none' : 'block';
-    });
-
-    function fetchData() {
-      const params = new URLSearchParams();
-      params.append('mode', currentMode);
-      if (selectedSuppliers.length) {
-        params.append('suppliers', selectedSuppliers.join(','));
-      }
-
-      fetch(`https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec?${params.toString()}`)
-        .then(res => res.json())
-        .then(data => {
-          items = data.items;
-          allSuppliers = data.suppliers;
-          if (!selectedSuppliers.length) selectedSuppliers = [...allSuppliers];
-          renderSupplierDropdown();
-          renderTable();
-        });
+    function toggleDropdown() {
+      document.getElementById('supplierList').parentElement.classList.toggle('show');
     }
 
     function renderSupplierDropdown() {
@@ -112,9 +72,18 @@
       allBox.id = 'selectAllSuppliers';
       allBox.checked = selectedSuppliers.length === allSuppliers.length;
       allBox.onchange = () => {
-        selectedSuppliers = allBox.checked ? [...allSuppliers] : [];
+        if (allBox.checked) {
+          selectedSuppliers = [...allSuppliers];
+        } else {
+          selectedSuppliers = [];
+        }
+
+        container.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+          if (cb !== allBox) cb.checked = allBox.checked;
+        });
+
         fetchData();
-        container.style.display = 'none';
+        container.parentElement.classList.remove('show');
       };
       container.appendChild(allBox);
       container.appendChild(document.createTextNode(' Select All'));
@@ -131,9 +100,11 @@
           } else {
             selectedSuppliers = selectedSuppliers.filter(s => s !== supplier);
           }
+
           document.getElementById('selectAllSuppliers').checked = selectedSuppliers.length === allSuppliers.length;
+
           fetchData();
-          container.style.display = 'none';
+          container.parentElement.classList.remove('show');
         };
         label.appendChild(checkbox);
         label.appendChild(document.createTextNode(' ' + supplier));
@@ -141,131 +112,152 @@
       });
     }
 
-    function renderTable() {
-      const headRow = document.getElementById('tableHead');
-      const body = document.getElementById('tableBody');
-      headRow.innerHTML = '';
-      body.innerHTML = '';
+    function fetchData() {
+      const finalSuppliers = selectedSuppliers.length ? selectedSuppliers : allSuppliers;
+      const params = new URLSearchParams();
+      params.append('mode', mode);
+      params.append('suppliers', finalSuppliers.join(','));
 
-      const headers = ['Barcode', 'Item Name', 'Supplier', 'Purchase Price', 'Current Inventory'];
-      if (currentMode === 'po') {
-        headers.push('Order Quantity', 'Order Amount');
-      }
-
-      headers.forEach(header => {
-        const th = document.createElement('th');
-        th.textContent = header;
-
-        if (header === 'Current Inventory') {
-          th.classList.add('sortable');
-          th.innerHTML += ` <span style="font-size: 12px;">&#x21C5;</span>`;
-          th.addEventListener('click', () => {
-            inventorySortAsc = !inventorySortAsc;
-            items.sort((a, b) => inventorySortAsc ? a.currentInventory - b.currentInventory : b.currentInventory - a.currentInventory);
-            renderTable();
-          });
-        }
-
-        headRow.appendChild(th);
-      });
-
-      let totalOrder = 0;
-
-      items.forEach(item => {
-        const row = document.createElement('tr');
-        if (item.currentInventory === 0) row.classList.add('zero-inventory');
-
-        const orderQtyInput = document.createElement('input');
-        orderQtyInput.type = 'number';
-        orderQtyInput.min = '0';
-        orderQtyInput.style.width = '80px';
-        orderQtyInput.value = item.qty || '';
-        orderQtyInput.addEventListener('input', (e) => {
-          item.qty = +e.target.value || 0;
-          item.amount = item.qty * (item.purchasePrice || 0);
+      fetch(`https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec?${params}`)
+        .then(res => res.json())
+        .then(data => {
+          allSuppliers = data.suppliers;
+          if (!selectedSuppliers.length) selectedSuppliers = [...allSuppliers];
+          currentItems = data.items;
+          renderSupplierDropdown();
           renderTable();
         });
+    }
 
-        const orderAmount = item.qty ? (item.qty * item.purchasePrice).toFixed(2) : '';
+    function renderTable() {
+      const headersRow = document.getElementById('tableHeaders');
+      const tbody = document.querySelector('#itemTable tbody');
+      tbody.innerHTML = '';
+      headersRow.innerHTML = '';
 
-        const cols = [
-          item.barcode,
-          item.name,
-          item.supplier1,
-          item.purchasePrice.toFixed(2),
-          item.currentInventory
-        ];
+      const headers = mode === 'inventory' 
+        ? ['Barcode', 'Item Name', 'Supplier', 'Current Inventory'] 
+        : ['Barcode', 'Item Name', 'Supplier', 'Current Inventory', 'Order Qty', 'Order Amount'];
 
-        if (currentMode === 'po') {
-          cols.push(orderQtyInput, orderAmount ? `₱${orderAmount}` : '');
-          totalOrder += item.qty ? item.qty * item.purchasePrice : 0;
+      headers.forEach(h => {
+        const th = document.createElement('th');
+        th.textContent = h;
+        if (h === 'Current Inventory') {
+          th.classList.add('sortable');
+          th.onclick = () => {
+            inventorySortAsc = !inventorySortAsc;
+            currentItems.sort((a, b) => inventorySortAsc ? a.currentInventory - b.currentInventory : b.currentInventory - a.currentInventory);
+            renderTable();
+          };
         }
-
-        cols.forEach(col => {
-          const td = document.createElement('td');
-          if (col instanceof HTMLElement) {
-            td.appendChild(col);
-          } else {
-            td.innerHTML = col;
-          }
-          row.appendChild(td);
-        });
-
-        body.appendChild(row);
+        headersRow.appendChild(th);
       });
 
-      const totalOrderDiv = document.getElementById('totalOrder');
-      if (currentMode === 'po') {
-        totalOrderDiv.textContent = `Total Order Amount: ₱${totalOrder.toFixed(2)}`;
-        totalOrderDiv.style.display = 'block';
-      } else {
-        totalOrderDiv.style.display = 'none';
-      }
+      let totalOrderAmount = 0;
+
+      currentItems.forEach(item => {
+        const tr = document.createElement('tr');
+        if (mode === 'inventory' && item.currentInventory === 0) tr.classList.add('zero-inventory');
+
+        const supplierName = item.supplier1 || '';
+
+        tr.innerHTML = `
+          <td>${item.barcode}</td>
+          <td>${item.name}</td>
+          <td>${supplierName}</td>
+          <td>${item.currentInventory}</td>
+        `;
+
+        if (mode === 'po') {
+          const qtyInput = document.createElement('input');
+          qtyInput.type = 'number';
+          qtyInput.min = 0;
+          qtyInput.value = item.orderQty || '';
+          qtyInput.oninput = () => {
+            item.orderQty = parseFloat(qtyInput.value) || 0;
+            item.orderAmount = item.orderQty * item.purchasePrice;
+            amountCell.textContent = item.orderAmount.toFixed(2);
+            calculateTotalAmount();
+          };
+
+          const qtyCell = document.createElement('td');
+          qtyCell.appendChild(qtyInput);
+          tr.appendChild(qtyCell);
+
+          const amountCell = document.createElement('td');
+          amountCell.textContent = item.orderAmount ? item.orderAmount.toFixed(2) : '0.00';
+          tr.appendChild(amountCell);
+
+          if (item.orderQty && item.orderQty > 0) {
+            tr.style.backgroundColor = '#e6f7ff'; // light blue for active orders
+            totalOrderAmount += item.orderAmount || 0;
+          }
+        }
+
+        tbody.appendChild(tr);
+      });
+
+      document.getElementById('totalAmountDisplay').textContent = 
+        (mode === 'po') ? `Total Order Amount: PHP ${totalOrderAmount.toFixed(2)}` : '';
+    }
+
+    function calculateTotalAmount() {
+      let total = 0;
+      currentItems.forEach(item => {
+        if (item.orderQty && item.orderQty > 0) {
+          item.orderAmount = item.orderQty * item.purchasePrice;
+          total += item.orderAmount;
+        }
+      });
+      document.getElementById('totalAmountDisplay').textContent = 
+        `Total Order Amount: PHP ${total.toFixed(2)}`;
     }
 
     function exportCSV() {
-      const now = new Date();
-      const pad = n => n.toString().padStart(2, '0');
-      const ts = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}`;
-      const supplierName = selectedSuppliers.length === 1 ? selectedSuppliers[0].replace(/\s+/g, '_') : 'multiple';
-      const modeLabel = currentMode === 'po' ? 'purchase_order' : 'inventory';
-      const filename = `${modeLabel}_${supplierName}_${ts}.csv`;
+      let rows = [];
 
-      const headers = ['Barcode', 'Item Name', 'Supplier', 'Purchase Price', 'Current Inventory'];
-      if (currentMode === 'po') headers.push('Order Quantity', 'Order Amount');
+      if (mode === 'inventory') {
+        rows.push(['Barcode', 'Item Name', 'Supplier', 'Current Inventory']);
+        currentItems.forEach(item => {
+          rows.push([item.barcode, item.name, item.supplier1, item.currentInventory]);
+        });
+      } else {
+        rows.push(['Barcode', 'Item Name', 'Supplier', 'Current Inventory', 'Order Qty', 'Order Amount']);
+        currentItems.forEach(item => {
+          if (item.orderQty > 0) {
+            rows.push([
+              item.barcode,
+              item.name,
+              item.supplier1,
+              item.currentInventory,
+              item.orderQty,
+              (item.orderQty * item.purchasePrice).toFixed(2)
+            ]);
+          }
+        });
+      }
 
-      const rows = [headers];
-
-      items.forEach(item => {
-        if (currentMode === 'po' && (!item.qty || item.qty <= 0)) return;
-
-        const row = [
-          item.barcode,
-          item.name,
-          item.supplier1,
-          item.purchasePrice.toFixed(2),
-          item.currentInventory
-        ];
-
-        if (currentMode === 'po') {
-          row.push(item.qty || 0, (item.qty * item.purchasePrice).toFixed(2));
-        }
-
-        rows.push(row);
-      });
-
-      const csvContent = rows.map(r => r.join(',')).join('\n');
+      const csvContent = rows.map(e => e.join(',')).join('\n');
       const blob = new Blob([csvContent], { type: 'text/csv' });
       const url = URL.createObjectURL(blob);
 
-      const link = document.createElement('a');
-      link.href = url;
-      link.download = filename;
-      link.click();
+      const now = new Date().toISOString().replace(/[:.]/g, '-');
+      const supplierLabel = selectedSuppliers.length === 1 ? selectedSuppliers[0] : 'multiple';
+      const filename = (mode === 'po' ? `purchase_order_${supplierLabel}_${now}.csv` : `inventory_${supplierLabel}_${now}.csv`);
+
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
       URL.revokeObjectURL(url);
     }
 
-    fetchData();
+    window.onload = fetchData;
+    window.onclick = e => {
+      if (!e.target.closest('.dropdown')) {
+        document.querySelector('.dropdown').classList.remove('show');
+      }
+    };
   </script>
 </body>
 </html>
