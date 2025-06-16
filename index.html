@@ -22,6 +22,7 @@
     .zero-inventory { background-color: #ffe5e5; }
     .highlight-order { background-color: #e6f7ff; }
     .btn { padding: 6px 12px; cursor: pointer; border: 1px solid #ccc; background: #f0f0f0; }
+    .btn.active { background-color: #007bff; color: white; border-color: #007bff; }
     #totalAmountDisplay { margin-top: 10px; font-weight: bold; }
   </style>
 </head>
@@ -30,20 +31,22 @@
   <div class="controls">
     <button class="btn" onclick="setMode('inventory')">Inventory</button>
     <button class="btn" onclick="setMode('po')">Purchase Order</button>
-    
+
     <div class="dropdown">
       <button class="btn" onclick="toggleDropdown()">Select Suppliers ▼</button>
       <div class="dropdown-content" id="supplierList"></div>
     </div>
-    
+
+    <label id="altSupplierToggle" style="display:none;">
+      <input type="checkbox" onchange="toggleAltSupplier(this)"> Use Alt Supplier
+    </label>
+
     <button class="btn" onclick="exportCSV()">Export CSV</button>
     <span id="totalAmountDisplay" style="display:none;"></span>
   </div>
 
   <table id="itemTable">
-    <thead>
-      <tr id="tableHeaders"></tr>
-    </thead>
+    <thead><tr id="tableHeaders"></tr></thead>
     <tbody></tbody>
   </table>
 
@@ -53,11 +56,20 @@
     let selectedSuppliers = [];
     let currentItems = [];
     let inventorySortAsc = true;
+    let useAltSupplier = false;
 
     function setMode(newMode) {
       mode = newMode;
       document.getElementById('totalAmountDisplay').style.display = (mode === 'po') ? 'block' : 'none';
+      document.getElementById('altSupplierToggle').style.display = (mode === 'po') ? 'inline' : 'none';
+      document.querySelectorAll('.controls .btn').forEach(btn => btn.classList.remove('active'));
+      document.querySelector(`.controls .btn:nth-child(${mode === 'inventory' ? 1 : 2})`).classList.add('active');
       fetchData();
+    }
+
+    function toggleAltSupplier(cb) {
+      useAltSupplier = cb.checked;
+      renderTable();
     }
 
     function toggleDropdown() {
@@ -71,14 +83,9 @@
       const allBox = document.createElement('input');
       allBox.type = 'checkbox';
       allBox.id = 'selectAllSuppliers';
-      allBox.checked = selectedSuppliers.length === allSuppliers.length &&
-                       allSuppliers.every(s => selectedSuppliers.includes(s));
+      allBox.checked = selectedSuppliers.length === allSuppliers.length;
       allBox.onchange = () => {
-        if (allBox.checked) {
-          selectedSuppliers = [...allSuppliers];
-        } else {
-          selectedSuppliers = [];
-        }
+        selectedSuppliers = allBox.checked ? [...allSuppliers] : [];
         container.querySelectorAll('input[type="checkbox"]').forEach(cb => {
           if (cb !== allBox) cb.checked = allBox.checked;
         });
@@ -100,9 +107,7 @@
           } else {
             selectedSuppliers = selectedSuppliers.filter(s => s !== supplier);
           }
-          document.getElementById('selectAllSuppliers').checked =
-            selectedSuppliers.length === allSuppliers.length &&
-            allSuppliers.every(s => selectedSuppliers.includes(s));
+          document.getElementById('selectAllSuppliers').checked = selectedSuppliers.length === allSuppliers.length;
           fetchData();
           container.parentElement.classList.remove('show');
         };
@@ -122,9 +127,7 @@
         .then(res => res.json())
         .then(data => {
           allSuppliers = data.suppliers;
-          if (!selectedSuppliers.length || selectedSuppliers.some(s => !allSuppliers.includes(s))) {
-            selectedSuppliers = [...allSuppliers];
-          }
+          if (!selectedSuppliers.length) selectedSuppliers = [...allSuppliers];
           currentItems = data.items;
           renderSupplierDropdown();
           renderTable();
@@ -137,8 +140,8 @@
       tbody.innerHTML = '';
       headersRow.innerHTML = '';
 
-      const headers = mode === 'inventory' 
-        ? ['Barcode', 'Item Name', 'Supplier', 'Current Inventory', 'Purchase Price', 'Inventory Amount'] 
+      const headers = mode === 'inventory'
+        ? ['Barcode', 'Item Name', 'Supplier', 'Purchase Price', 'Current Inventory', 'Inventory Amount']
         : ['Barcode', 'Item Name', 'Supplier', 'Current Inventory', 'Order Qty', 'Order Amount'];
 
       headers.forEach(h => {
@@ -155,51 +158,47 @@
         headersRow.appendChild(th);
       });
 
-      const filteredItems = currentItems.filter(item =>
-        selectedSuppliers.includes(item.supplier1)
-      );
-
       let totalOrderAmount = 0;
 
-      filteredItems.forEach(item => {
+      currentItems.forEach(item => {
         const tr = document.createElement('tr');
-        if (mode === 'inventory' && item.currentInventory === 0) {
-          tr.classList.add('zero-inventory');
-        }
+        if (mode === 'inventory' && item.currentInventory === 0) tr.classList.add('zero-inventory');
 
-        if (mode === 'po' && item.orderQty > 0) {
-          tr.classList.add('highlight-order');
-        }
+        const supplier = useAltSupplier ? item.altSupplier : item.supplier1;
+        const price = useAltSupplier ? item.altPurchasePrice : item.purchasePrice;
 
-        const supplierName = item.supplier1 || '';
-        const baseCols = `
-          <td>${item.barcode}</td>
+        tr.innerHTML = `
+          <td>'${item.barcode}'</td>
           <td>${item.name}</td>
-          <td>${supplierName}</td>
-          <td>${item.currentInventory}</td>
+          <td>${supplier}</td>
         `;
 
-        tr.innerHTML = baseCols;
-
         if (mode === 'inventory') {
-          const invAmount = item.currentInventory * item.purchasePrice;
+          const amount = price * item.currentInventory;
           tr.innerHTML += `
-            <td>${item.purchasePrice.toFixed(2)}</td>
-            <td>${invAmount.toFixed(2)}</td>
+            <td>${price.toFixed(2)}</td>
+            <td>${item.currentInventory}</td>
+            <td>${amount.toFixed(2)}</td>
           `;
         }
 
         if (mode === 'po') {
+          tr.innerHTML += `<td>${item.currentInventory}</td>`;
+
           const qtyInput = document.createElement('input');
           qtyInput.type = 'number';
           qtyInput.min = 0;
           qtyInput.value = item.orderQty || '';
           qtyInput.oninput = () => {
             item.orderQty = parseFloat(qtyInput.value) || 0;
-            item.orderAmount = item.orderQty * item.purchasePrice;
+            item.orderAmount = item.orderQty * price;
             amountCell.textContent = item.orderAmount.toFixed(2);
             calculateTotalAmount();
-            renderTable(); // Refresh highlight
+            if (item.orderQty > 0) {
+              tr.classList.add('highlight-order');
+            } else {
+              tr.classList.remove('highlight-order');
+            }
           };
 
           const qtyCell = document.createElement('td');
@@ -210,7 +209,8 @@
           amountCell.textContent = item.orderAmount ? item.orderAmount.toFixed(2) : '0.00';
           tr.appendChild(amountCell);
 
-          if (item.orderQty && item.orderQty > 0) {
+          if (item.orderQty > 0) {
+            tr.classList.add('highlight-order');
             totalOrderAmount += item.orderAmount || 0;
           }
         }
@@ -218,51 +218,43 @@
         tbody.appendChild(tr);
       });
 
-      document.getElementById('totalAmountDisplay').textContent = 
+      document.getElementById('totalAmountDisplay').textContent =
         (mode === 'po') ? `Total Order Amount: PHP ${totalOrderAmount.toFixed(2)}` : '';
     }
 
     function calculateTotalAmount() {
       let total = 0;
       currentItems.forEach(item => {
+        const price = useAltSupplier ? item.altPurchasePrice : item.purchasePrice;
         if (item.orderQty && item.orderQty > 0) {
-          item.orderAmount = item.orderQty * item.purchasePrice;
+          item.orderAmount = item.orderQty * price;
           total += item.orderAmount;
         }
       });
-      document.getElementById('totalAmountDisplay').textContent = 
-        `Total Order Amount: PHP ${total.toFixed(2)}`;
+      document.getElementById('totalAmountDisplay').textContent = `Total Order Amount: PHP ${total.toFixed(2)}`;
     }
 
     function exportCSV() {
       let rows = [];
+      const now = new Date().toISOString().replace(/[:.]/g, '-');
+      const supplierLabel = selectedSuppliers.length === 1 ? selectedSuppliers[0] : 'multiple';
+      const filename = (mode === 'po' ? `purchase_order_${supplierLabel}_${now}.csv` : `inventory_${supplierLabel}_${now}.csv`);
 
       if (mode === 'inventory') {
-        rows.push(['Barcode', 'Item Name', 'Supplier', 'Current Inventory', 'Purchase Price', 'Inventory Amount']);
+        rows.push(['Barcode', 'Item Name', 'Supplier', 'Purchase Price', 'Current Inventory', 'Inventory Amount']);
         currentItems.forEach(item => {
-          if (selectedSuppliers.includes(item.supplier1)) {
-            rows.push([
-              `\t${item.barcode}`, // tab prefix to preserve barcode format
-              item.name,
-              item.supplier1,
-              item.currentInventory,
-              item.purchasePrice.toFixed(2),
-              (item.currentInventory * item.purchasePrice).toFixed(2)
-            ]);
-          }
+          const supplier = useAltSupplier ? item.altSupplier : item.supplier1;
+          const price = useAltSupplier ? item.altPurchasePrice : item.purchasePrice;
+          const amount = item.currentInventory * price;
+          rows.push([`'${item.barcode}`, item.name, supplier, price, item.currentInventory, amount.toFixed(2)]);
         });
       } else {
         rows.push(['Barcode', 'Item Name', 'Supplier', 'Current Inventory', 'Order Qty', 'Order Amount']);
         currentItems.forEach(item => {
-          if (selectedSuppliers.includes(item.supplier1) && item.orderQty > 0) {
-            rows.push([
-              `\t${item.barcode}`,
-              item.name,
-              item.supplier1,
-              item.currentInventory,
-              item.orderQty,
-              (item.orderQty * item.purchasePrice).toFixed(2)
-            ]);
+          const supplier = useAltSupplier ? item.altSupplier : item.supplier1;
+          const price = useAltSupplier ? item.altPurchasePrice : item.purchasePrice;
+          if (item.orderQty > 0) {
+            rows.push([`'${item.barcode}`, item.name, supplier, item.currentInventory, item.orderQty, (item.orderQty * price).toFixed(2)]);
           }
         });
       }
@@ -270,11 +262,6 @@
       const csvContent = rows.map(e => e.join(',')).join('\n');
       const blob = new Blob([csvContent], { type: 'text/csv' });
       const url = URL.createObjectURL(blob);
-
-      const now = new Date().toISOString().replace(/[:.]/g, '-');
-      const supplierLabel = selectedSuppliers.length === 1 ? selectedSuppliers[0] : 'multiple';
-      const filename = (mode === 'po' ? `purchase_order_${supplierLabel}_${now}.csv` : `inventory_${supplierLabel}_${now}.csv`);
-
       const a = document.createElement('a');
       a.href = url;
       a.download = filename;
