@@ -98,43 +98,46 @@
           items = data.items;
           allSuppliers = data.suppliers;
           if (!selectedSuppliers.length) selectedSuppliers = [...allSuppliers];
-          renderSupplierPopup();
+          renderSupplierDropdown();
           renderTable();
         });
     }
 
-    function renderSupplierPopup() {
-      const popup = document.getElementById('supplierPopup');
-      popup.innerHTML = '';
-      const selectAll = document.createElement('div');
-      const allChecked = selectedSuppliers.length === allSuppliers.length;
-      selectAll.innerHTML = `<label><input type="checkbox" id="selectAll" ${allChecked ? 'checked' : ''}/> Select All</label>`;
-      popup.appendChild(selectAll);
+    function renderSupplierDropdown() {
+      const container = document.getElementById('supplierList');
+      container.innerHTML = '';
 
-      document.getElementById('selectAll').addEventListener('change', (e) => {
-        if (e.target.checked) {
-          selectedSuppliers = [...allSuppliers];
-        } else {
-          selectedSuppliers = [];
-        }
+      const allBox = document.createElement('input');
+      allBox.type = 'checkbox';
+      allBox.id = 'selectAllSuppliers';
+      allBox.checked = selectedSuppliers.length === allSuppliers.length;
+      allBox.onchange = () => {
+        selectedSuppliers = allBox.checked ? [...allSuppliers] : [];
         fetchData();
-      });
+        container.classList.remove('show');
+      };
+      container.appendChild(allBox);
+      container.appendChild(document.createTextNode(' Select All'));
 
       allSuppliers.forEach(supplier => {
-        const checkbox = document.createElement('div');
-        checkbox.innerHTML = `<label><input type="checkbox" value="${supplier}" ${selectedSuppliers.includes(supplier) ? 'checked' : ''}/> ${supplier}</label>`;
-        popup.appendChild(checkbox);
-
-        checkbox.querySelector('input').addEventListener('change', (e) => {
-          if (e.target.checked) {
-            if (!selectedSuppliers.includes(supplier)) {
-              selectedSuppliers.push(supplier);
-            }
+        const label = document.createElement('label');
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.value = supplier;
+        checkbox.checked = selectedSuppliers.includes(supplier);
+        checkbox.onchange = () => {
+          if (checkbox.checked) {
+            if (!selectedSuppliers.includes(supplier)) selectedSuppliers.push(supplier);
           } else {
             selectedSuppliers = selectedSuppliers.filter(s => s !== supplier);
           }
+          document.getElementById('selectAllSuppliers').checked = selectedSuppliers.length === allSuppliers.length;
           fetchData();
-        });
+          container.classList.remove('show');
+        };
+        label.appendChild(checkbox);
+        label.appendChild(document.createTextNode(' ' + supplier));
+        container.appendChild(label);
       });
     }
 
