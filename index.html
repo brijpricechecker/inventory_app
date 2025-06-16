@@ -11,11 +11,22 @@
     th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
     th.sortable:hover { cursor: pointer; background-color: #f0f0f0; }
     .zero-inventory { background-color: #ffe5e5; }
-    .filter-group { margin-bottom: 10px; }
-    .checkbox-popup { border: 1px solid #ccc; padding: 10px; max-height: 200px; overflow-y: auto; position: absolute; background: white; z-index: 10; display: none; }
+    .filter-group { margin-bottom: 10px; display: flex; align-items: center; gap: 15px; }
+    .checkbox-popup {
+      border: 1px solid #ccc;
+      padding: 10px;
+      max-height: 200px;
+      overflow-y: auto;
+      position: absolute;
+      background: white;
+      z-index: 10;
+      display: none;
+    }
     .total-order { font-weight: bold; margin-top: 10px; }
     .button-row { margin-top: 10px; }
     button { margin-right: 10px; padding: 6px 12px; }
+    .mode-button.active { font-weight: bold; background-color: #007bff; color: white; border: none; }
+    .mode-button { border: 1px solid #ccc; background: #f9f9f9; }
   </style>
 </head>
 <body>
@@ -23,20 +34,17 @@
   <h1>Inventory & Purchase Order</h1>
 
   <div class="filter-group">
-    <label for="mode">Mode:</label>
-    <select id="mode">
-      <option value="inventory">Inventory</option>
-      <option value="po">Purchase Order</option>
-    </select>
+    <div>
+      <button id="inventoryBtn" class="mode-button active">Inventory</button>
+      <button id="poBtn" class="mode-button">Purchase Order</button>
+    </div>
 
-    <div style="display: inline-block; position: relative;">
+    <div style="position: relative;">
       <button id="supplierFilterBtn">Filter Suppliers</button>
       <div id="supplierPopup" class="checkbox-popup"></div>
     </div>
 
-    <div class="button-row">
-      <button onclick="exportCSV()">Export CSV</button>
-    </div>
+    <button onclick="exportCSV()">Export CSV</button>
   </div>
 
   <div class="total-order" id="totalOrder" style="display: none;"></div>
@@ -55,10 +63,22 @@
     let currentMode = 'inventory';
     let inventorySortAsc = true;
 
-    document.getElementById('mode').addEventListener('change', () => {
-      currentMode = document.getElementById('mode').value;
+    document.getElementById('inventoryBtn').addEventListener('click', () => {
+      currentMode = 'inventory';
+      updateModeButtons();
       fetchData();
     });
+
+    document.getElementById('poBtn').addEventListener('click', () => {
+      currentMode = 'po';
+      updateModeButtons();
+      fetchData();
+    });
+
+    function updateModeButtons() {
+      document.getElementById('inventoryBtn').classList.toggle('active', currentMode === 'inventory');
+      document.getElementById('poBtn').classList.toggle('active', currentMode === 'po');
+    }
 
     document.getElementById('supplierFilterBtn').addEventListener('click', () => {
       const popup = document.getElementById('supplierPopup');
@@ -107,7 +127,9 @@
 
         checkbox.querySelector('input').addEventListener('change', (e) => {
           if (e.target.checked) {
-            selectedSuppliers.push(supplier);
+            if (!selectedSuppliers.includes(supplier)) {
+              selectedSuppliers.push(supplier);
+            }
           } else {
             selectedSuppliers = selectedSuppliers.filter(s => s !== supplier);
           }
@@ -158,7 +180,7 @@
         orderQtyInput.addEventListener('input', (e) => {
           item.qty = +e.target.value || 0;
           item.amount = item.qty * (item.purchasePrice || 0);
-          renderTable(); // Refresh to update order amount and total
+          renderTable();
         });
 
         const orderAmount = item.qty ? (item.qty * item.purchasePrice).toFixed(2) : '';
@@ -240,7 +262,6 @@
       URL.revokeObjectURL(url);
     }
 
-    // Initial fetch
     fetchData();
   </script>
 </body>
