@@ -19,7 +19,8 @@
     table { width: 100%; border-collapse: collapse; margin-top: 10px; }
     th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
     th.sortable { cursor: pointer; }
-    .zero-inventory { background-color: #ffe5e5; } /* light red */
+    .zero-inventory { background-color: #ffe5e5; }
+    .highlight-order { background-color: #e6f7ff; }
     .btn { padding: 6px 12px; cursor: pointer; border: 1px solid #ccc; background: #f0f0f0; }
     #totalAmountDisplay { margin-top: 10px; font-weight: bold; }
   </style>
@@ -137,7 +138,7 @@
       headersRow.innerHTML = '';
 
       const headers = mode === 'inventory' 
-        ? ['Barcode', 'Item Name', 'Supplier', 'Current Inventory'] 
+        ? ['Barcode', 'Item Name', 'Supplier', 'Current Inventory', 'Purchase Price', 'Inventory Amount'] 
         : ['Barcode', 'Item Name', 'Supplier', 'Current Inventory', 'Order Qty', 'Order Amount'];
 
       headers.forEach(h => {
@@ -162,15 +163,31 @@
 
       filteredItems.forEach(item => {
         const tr = document.createElement('tr');
-        if (mode === 'inventory' && item.currentInventory === 0) tr.classList.add('zero-inventory');
+        if (mode === 'inventory' && item.currentInventory === 0) {
+          tr.classList.add('zero-inventory');
+        }
+
+        if (mode === 'po' && item.orderQty > 0) {
+          tr.classList.add('highlight-order');
+        }
 
         const supplierName = item.supplier1 || '';
-        tr.innerHTML = `
+        const baseCols = `
           <td>${item.barcode}</td>
           <td>${item.name}</td>
           <td>${supplierName}</td>
           <td>${item.currentInventory}</td>
         `;
+
+        tr.innerHTML = baseCols;
+
+        if (mode === 'inventory') {
+          const invAmount = item.currentInventory * item.purchasePrice;
+          tr.innerHTML += `
+            <td>${item.purchasePrice.toFixed(2)}</td>
+            <td>${invAmount.toFixed(2)}</td>
+          `;
+        }
 
         if (mode === 'po') {
           const qtyInput = document.createElement('input');
@@ -182,6 +199,7 @@
             item.orderAmount = item.orderQty * item.purchasePrice;
             amountCell.textContent = item.orderAmount.toFixed(2);
             calculateTotalAmount();
+            renderTable(); // Refresh highlight
           };
 
           const qtyCell = document.createElement('td');
@@ -193,7 +211,6 @@
           tr.appendChild(amountCell);
 
           if (item.orderQty && item.orderQty > 0) {
-            tr.style.backgroundColor = '#e6f7ff';
             totalOrderAmount += item.orderAmount || 0;
           }
         }
@@ -221,10 +238,17 @@
       let rows = [];
 
       if (mode === 'inventory') {
-        rows.push(['Barcode', 'Item Name', 'Supplier', 'Current Inventory']);
+        rows.push(['Barcode', 'Item Name', 'Supplier', 'Current Inventory', 'Purchase Price', 'Inventory Amount']);
         currentItems.forEach(item => {
           if (selectedSuppliers.includes(item.supplier1)) {
-            rows.push([item.barcode, item.name, item.supplier1, item.currentInventory]);
+            rows.push([
+              `\t${item.barcode}`, // tab prefix to preserve barcode format
+              item.name,
+              item.supplier1,
+              item.currentInventory,
+              item.purchasePrice.toFixed(2),
+              (item.currentInventory * item.purchasePrice).toFixed(2)
+            ]);
           }
         });
       } else {
@@ -232,7 +256,7 @@
         currentItems.forEach(item => {
           if (selectedSuppliers.includes(item.supplier1) && item.orderQty > 0) {
             rows.push([
-              item.barcode,
+              `\t${item.barcode}`,
               item.name,
               item.supplier1,
               item.currentInventory,
