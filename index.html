@@ -1,111 +1,128 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8" />
-  <title>Inventory & PO</title>
+  <meta charset="UTF-8">
+  <title>Inventory & Purchase Order Dashboard</title>
   <style>
-    body { font-family: Arial, sans-serif; padding: 10px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-    th, td { border: 1px solid #ccc; padding: 6px; text-align: left; }
-    th { background: #f0f0f0; cursor: pointer; }
-    .highlight { background-color: #ffffcc; }
-    .dropdown { position: relative; display: inline-block; }
-    .dropdown-content {
-      display: none;
+    body {
+      font-family: Arial, sans-serif;
+      margin: 20px;
+    }
+    #controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    #supplierFilterPopup {
       position: absolute;
-      background: #fff;
+      background: white;
       border: 1px solid #ccc;
       padding: 10px;
-      z-index: 99;
-      max-height: 200px;
-      overflow-y: auto;
+      display: none;
+      z-index: 10;
     }
-    .dropdown:hover .dropdown-content { display: block; }
-    .total-order {
+    #supplierFilterPopup label {
+      display: block;
+    }
+    .highlight {
+      background-color: #f9f871;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 1em;
+    }
+    th, td {
+      border: 1px solid #ccc;
+      padding: 6px;
+      text-align: left;
+    }
+    th {
+      background-color: #eee;
+      cursor: pointer;
+    }
+    input[type="number"] {
+      width: 60px;
+    }
+    #totalAmount {
+      float: right;
       font-weight: bold;
-      font-size: 1.1em;
-      text-align: right;
     }
-    button { margin-right: 8px; }
   </style>
 </head>
 <body>
 
-<div style="display: flex; justify-content: space-between; align-items: center;">
-  <div id="controls" style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-    <button id="modeToggle">Switch to Purchase Order</button>
-    <button id="altToggle" style="display:none;">Use Alt Supplier</button>
-
-    <div class="dropdown">
-      <button>Filter Suppliers ▼</button>
-      <div class="dropdown-content" id="supplierFilter"></div>
-    </div>
-
-    <button id="downloadBtn">Export to CSV</button>
-    <button id="submitBtn" style="display:none;">Submit Order</button>
+<div id="controls">
+  <div>
+    <button id="modeToggle" onclick="toggleMode()">Purchase Order</button>
+    <button id="altToggle" onclick="toggleAltSupplier()" style="display:none;">Use Alt Supplier</button>
+    <button onclick="toggleSupplierFilter()">Filter Suppliers</button>
   </div>
-  <div id="totalOrder" class="total-order" style="display:none;"></div>
+  <div>
+    <button onclick="exportToCSV()">Export to CSV</button>
+    <span id="totalAmount"></span>
+  </div>
 </div>
 
+<div id="supplierFilterPopup"></div>
 <div id="tableContainer"></div>
 
 <script>
-  const apiUrl = 'https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec'; // replace with deployed Apps Script URL
-  let allItems = [];
-  let orderData = {};
-  let selectedSuppliers = [];
-  let isPO = false;
+  const apiUrl = 'https://script.google.com/macros/s/YOUR_SCRIPT_ID/exec'; // Replace with your actual URL
+  let isPO = true;
   let useAlt = false;
+  let allItems = [];
+  let selectedSuppliers = [];
+  let orderData = {};
+  let allSuppliers = [];
   let currentSort = { column: '', asc: true };
 
-  document.getElementById('modeToggle').onclick = () => {
+  document.addEventListener("click", () => {
+    document.getElementById("supplierFilterPopup").style.display = "none";
+  });
+
+  function toggleMode() {
     isPO = !isPO;
     orderData = {};
-    document.getElementById('modeToggle').textContent = isPO ? 'Switch to Inventory' : 'Switch to Purchase Order';
-    document.getElementById('submitBtn').style.display = isPO ? '' : 'none';
-    document.getElementById('altToggle').style.display = isPO ? '' : 'none';
-    document.getElementById('totalOrder').style.display = isPO ? '' : 'none';
+    useAlt = false;
+    document.getElementById('modeToggle').textContent = isPO ? 'Inventory' : 'Purchase Order';
+    document.getElementById('altToggle').style.display = isPO ? 'inline-block' : 'none';
     fetchData();
-  };
+  }
 
-  document.getElementById('altToggle').onclick = () => {
+  function toggleAltSupplier() {
     useAlt = !useAlt;
-    document.getElementById('altToggle').style.backgroundColor = useAlt ? '#d1eaff' : '';
     renderTable();
-  };
+  }
 
-  document.getElementById('downloadBtn').onclick = exportToCSV;
-
-  document.getElementById('submitBtn').onclick = async () => {
-    const orders = Object.values(orderData);
-    if (orders.length === 0) return alert('No orders to submit.');
-    await fetch(`${apiUrl}`, {
-      method: 'POST',
-      body: JSON.stringify({ orders }),
-      headers: { 'Content-Type': 'application/json' }
+  function toggleSupplierFilter() {
+    const popup = document.getElementById("supplierFilterPopup");
+    popup.style.display = popup.style.display === "block" ? "none" : "block";
+    popup.innerHTML = `<label><input type="checkbox" onchange="selectAllSuppliers(this)" ${selectedSuppliers.length === allSuppliers.length ? 'checked' : ''}> Select All</label>`;
+    allSuppliers.forEach(supplier => {
+      const checked = selectedSuppliers.includes(supplier) ? 'checked' : '';
+      popup.innerHTML += `<label><input type="checkbox" value="${supplier}" onchange="toggleSupplier(this)" ${checked}> ${supplier}</label>`;
     });
-    alert('Orders submitted!');
-    orderData = {};
+  }
+
+  function selectAllSuppliers(box) {
+    if (box.checked) {
+      selectedSuppliers = [...allSuppliers];
+    } else {
+      selectedSuppliers = [];
+    }
     fetchData();
-  };
+  }
 
-  function updateSupplierFilter(suppliers) {
-    const container = document.getElementById('supplierFilter');
-    container.innerHTML = '';
-    suppliers.forEach(supplier => {
-      const id = 'chk_' + supplier.replace(/\s+/g, '_');
-      const div = document.createElement('div');
-      div.innerHTML = `<label><input type="checkbox" id="${id}" checked /> ${supplier}</label>`;
-      container.appendChild(div);
-      document.getElementById(id).onchange = () => {
-        selectedSuppliers = suppliers.filter(s => {
-          const chk = document.getElementById('chk_' + s.replace(/\s+/g, '_'));
-          return chk && chk.checked;
-        });
-        fetchData();
-      };
-    });
-    selectedSuppliers = [...suppliers];
+  function toggleSupplier(checkbox) {
+    const val = checkbox.value;
+    if (checkbox.checked) {
+      selectedSuppliers.push(val);
+    } else {
+      selectedSuppliers = selectedSuppliers.filter(s => s !== val);
+    }
+    fetchData();
   }
 
   async function fetchData() {
@@ -114,18 +131,35 @@
     const res = await fetch(`${apiUrl}?mode=${mode}&suppliers=${suppliersParam}`);
     const data = await res.json();
     allItems = data.items;
-    updateSupplierFilter(data.suppliers);
+    allSuppliers = data.suppliers;
+    if (selectedSuppliers.length === 0) selectedSuppliers = [...allSuppliers];
     renderTable();
   }
 
-  function toggleSort(column) {
-    if (currentSort.column === column) {
-      currentSort.asc = !currentSort.asc;
+  function captureQty(barcode, value, price) {
+    const qty = parseInt(value);
+    if (!orderData[barcode]) {
+      orderData[barcode] = { qty: 0 };
+    }
+    if (!isNaN(qty)) {
+      orderData[barcode].qty = qty;
+      orderData[barcode].amount = qty * price;
     } else {
-      currentSort.column = column;
-      currentSort.asc = true;
+      delete orderData[barcode];
     }
     renderTable();
+  }
+
+  function updateTotal() {
+    if (!isPO) {
+      document.getElementById("totalAmount").textContent = '';
+      return;
+    }
+    let total = 0;
+    Object.values(orderData).forEach(o => {
+      total += o.amount || 0;
+    });
+    document.getElementById("totalAmount").textContent = `Total: ₱${total.toFixed(2)}`;
   }
 
   function renderTable() {
@@ -138,9 +172,9 @@
     const sortedItems = [...allItems];
     if (currentSort.column === 'inventory') {
       sortedItems.sort((a, b) => {
-        const valA = a.currentInventory || 0;
-        const valB = b.currentInventory || 0;
-        return currentSort.asc ? valA - valB : valB - valA;
+        const aVal = a.currentInventory || 0;
+        const bVal = b.currentInventory || 0;
+        return currentSort.asc ? aVal - bVal : bVal - aVal;
       });
     }
 
@@ -159,87 +193,74 @@
       const supplier = useAlt ? item.supplier2 : item.supplier1;
       const price = useAlt ? item.altPurchasePrice : item.purchasePrice;
       const inv = item.currentInventory || 0;
-      const isOrdered = !!orderData[item.barcode];
+      const order = orderData[item.barcode] || {};
+      const qty = order.qty || '';
+      const amt = qty && price ? qty * price : '';
 
-      let row = `<tr${isPO && isOrdered ? ' class="highlight"' : ''}>`;
-      row += `<td>'${item.barcode}</td>`;
-      row += `<td>${item.name}</td>`;
-      row += `<td>${supplier}</td>`;
-      row += `<td>${price.toFixed(2)}</td>`;
+      let row = `<tr${isPO && qty ? ' class="highlight"' : ''}>`;
+      row += `<td>'${item.barcode}</td><td>${item.name}</td><td>${supplier}</td><td>${price.toFixed(2)}</td>`;
 
       if (isPO) {
-        const qty = orderData[item.barcode]?.qty || '';
-        const amt = orderData[item.barcode]?.amount || 0;
         row += `<td>${inv}</td>`;
-        row += `<td><input type="number" min="0" step="1" value="${qty}"
-          onfocus="this.select()" oninput="captureQty('${item.barcode}', this.value, ${price})"
-          onkeydown="event.stopPropagation();"></td>`;
+        row += `<td><input type="number" value="${qty}" onfocus="this.select()" oninput="captureQty('${item.barcode}', this.value, ${price})" onkeydown="event.stopPropagation();"></td>`;
         row += `<td>${amt ? amt.toFixed(2) : ''}</td>`;
       } else {
-        row += `<td>${inv}</td>`;
-        row += `<td>${(inv * price).toFixed(2)}</td>`;
+        row += `<td>${inv}</td><td>${(inv * price).toFixed(2)}</td>`;
       }
 
-      row += `</tr>`;
+      row += '</tr>';
       html += row;
     });
 
-    html += `</tbody></table>`;
+    html += '</tbody></table>';
     container.innerHTML = html;
     updateTotal();
   }
 
-  function updateTotal() {
-    const total = Object.values(orderData).reduce((sum, o) => sum + o.amount, 0);
-    document.getElementById('totalOrder').textContent = isPO ? `Total Order Amount: ₱${total.toFixed(2)}` : '';
-  }
-
-  let qtyTimeout;
-  function captureQty(barcode, val, price) {
-    clearTimeout(qtyTimeout);
-    qtyTimeout = setTimeout(() => {
-      const qty = parseInt(val);
-      if (qty > 0) {
-        const item = allItems.find(i => i.barcode === barcode);
-        const supplier = useAlt ? item.supplier2 : item.supplier1;
-        orderData[barcode] = {
-          qty,
-          amount: qty * price,
-          barcode,
-          name: item.name,
-          supplier,
-          purchasePrice: price
-        };
-      } else {
-        delete orderData[barcode];
-      }
-      updateTotal();
-      renderTable();
-    }, 300);
+  function toggleSort(column) {
+    if (currentSort.column === column) {
+      currentSort.asc = !currentSort.asc;
+    } else {
+      currentSort.column = column;
+      currentSort.asc = true;
+    }
+    renderTable();
   }
 
   function exportToCSV() {
     const rows = [];
+    const today = new Date();
+    const dateStr = today.toISOString().slice(0, 10);
+    const supplierStr = selectedSuppliers.join('-').replace(/\s+/g, '_') || 'All';
+    const prefix = isPO ? 'PO' : 'inventory';
+    const filename = `${prefix}_${dateStr}_${supplierStr}.csv`;
+
     if (isPO) {
-      Object.values(orderData).forEach(order => {
+      rows.push(["Timestamp", "Barcode", "Item Name", "", "Supplier", "Purchase Price", "Order Quantity", "Order Amount"]);
+      Object.entries(orderData).forEach(([barcode, order]) => {
+        const item = allItems.find(i => i.barcode === barcode);
+        const supplier = useAlt ? item.supplier2 : item.supplier1;
+        const price = useAlt ? item.altPurchasePrice : item.purchasePrice;
+        const amount = order.qty * price;
         rows.push([
           new Date().toLocaleString(),
-          order.barcode,
-          order.name,
+          `'${barcode}`,
+          item.name,
           '',
-          order.supplier,
-          order.purchasePrice.toFixed(2),
-          order.qty
+          supplier,
+          price.toFixed(2),
+          order.qty,
+          amount.toFixed(2)
         ]);
       });
     } else {
-      rows.push(['Barcode', 'Item Name', 'Supplier', 'Purchase Price', 'Inventory', 'Value']);
+      rows.push(["Barcode", "Item Name", "Supplier", "Purchase Price", "Inventory", "Value"]);
       allItems.forEach(item => {
         const supplier = useAlt ? item.supplier2 : item.supplier1;
         const price = useAlt ? item.altPurchasePrice : item.purchasePrice;
         const inv = item.currentInventory || 0;
         rows.push([
-          item.barcode,
+          `'${item.barcode}`,
           item.name,
           supplier,
           price.toFixed(2),
@@ -252,15 +273,15 @@
     const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = URL.createObjectURL(blob);
+
     const a = document.createElement('a');
     a.href = url;
-    a.download = isPO ? 'purchase_orders.csv' : 'inventory.csv';
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
   }
 
-  fetchData();
+  fetchData(); // Initial load
 </script>
-
 </body>
 </html>
