@@ -17,7 +17,6 @@
     }
     #controls { margin-bottom: 10px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 
-    /* Supplier filter dropdown */
     .dropdown {
       position: relative;
       display: inline-block;
@@ -105,7 +104,6 @@
       const filter = document.getElementById('supplierFilter');
       filter.innerHTML = '';
 
-      // "Select All" option
       const selectAll = document.createElement('div');
       const chkAll = document.createElement('input');
       chkAll.type = 'checkbox';
@@ -146,13 +144,14 @@
       let html = `<table><thead><tr>
         <th>Barcode</th><th>Item Name</th><th>Supplier</th><th>Purchase Price</th>`;
 
-      if (isPO) html += `<th>Order Qty</th><th>Order Amount</th>`;
+      if (isPO) html += `<th>Current Inventory</th><th>Order Qty</th><th>Order Amount</th>`;
       else html += `<th>Inventory</th><th>Value</th>`;
       html += `</tr></thead><tbody>`;
 
       allItems.forEach(item => {
         const supplier = useAlt ? item.supplier2 : item.supplier1;
         const price = useAlt ? item.altPurchasePrice : item.purchasePrice;
+        const inv = item.currentInventory || 0;
 
         let row = `<tr${isPO && orderData[item.barcode] ? ' class="highlight"' : ''}>`;
         row += `<td>${item.barcode}</td>`;
@@ -163,10 +162,10 @@
         if (isPO) {
           const qty = orderData[item.barcode]?.qty || '';
           const amt = orderData[item.barcode]?.amount || 0;
-          row += `<td><input type="number" min="0" value="${qty}" oninput="updateQty('${item.barcode}', this.value, ${price})" onfocus="this.select()"></td>`;
+          row += `<td>${inv}</td>`;
+          row += `<td><input type="number" min="0" step="1" value="${qty}" oninput="updateQty('${item.barcode}', this.value, ${price})" onkeydown="event.stopPropagation();" onfocus="this.select()"></td>`;
           row += `<td>${amt ? amt.toFixed(2) : ''}</td>`;
         } else {
-          const inv = item.currentInventory || 0;
           row += `<td>${inv}</td>`;
           row += `<td>${(inv * price).toFixed(2)}</td>`;
         }
@@ -190,7 +189,8 @@
           name: allItems.find(i => i.barcode === barcode)?.name || '',
           supplier: useAlt
             ? allItems.find(i => i.barcode === barcode)?.supplier2 || ''
-            : allItems.find(i => i.barcode === barcode)?.supplier1 || ''
+            : allItems.find(i => i.barcode === barcode)?.supplier1 || '',
+          purchasePrice: price
         };
       } else {
         delete orderData[barcode];
@@ -218,15 +218,15 @@
     }
 
     function downloadCSV() {
-      let csv = isPO
-        ? 'Barcode,Item Name,Supplier,Quantity,Amount\n'
-        : 'Barcode,Item Name,Supplier,Purchase Price,Inventory,Value\n';
-
+      let csv = '';
       if (isPO) {
+        const now = new Date().toLocaleString();
+        csv += 'Timestamp,Barcode,Item Name,,Supplier,Purchase Price,Quantity\n';
         Object.values(orderData).forEach(order => {
-          csv += `"${order.barcode}","${order.name}","${order.supplier}",${order.qty},${order.amount}\n`;
+          csv += `"${now}","${order.barcode}","${order.name}",,"${order.supplier}",${order.purchasePrice},${order.qty}\n`;
         });
       } else {
+        csv += 'Barcode,Item Name,Supplier,Purchase Price,Inventory,Value\n';
         allItems.forEach(item => {
           const supplier = useAlt ? item.supplier2 : item.supplier1;
           const price = useAlt ? item.altPurchasePrice : item.purchasePrice;
