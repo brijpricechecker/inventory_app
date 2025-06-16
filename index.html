@@ -50,7 +50,7 @@
 <div id="tableContainer"></div>
 
 <script>
-  const apiUrl = 'https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec'; // Replace with deployed Apps Script URL
+  const apiUrl = 'https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec'; // Replace if needed
   let allItems = [];
   let orderData = {};
   let allSuppliers = [];
@@ -109,23 +109,26 @@
 
     selectedSuppliers = [...suppliers];
 
+    const updateSelected = () => {
+      selectedSuppliers = suppliers.filter(s =>
+        document.getElementById('chk_' + s.replace(/\s+/g, '_')).checked
+      );
+      const allChecked = suppliers.every(s =>
+        document.getElementById('chk_' + s.replace(/\s+/g, '_')).checked
+      );
+      document.getElementById(selectAllId).checked = allChecked;
+      fetchData();
+    };
+
     container.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
       checkbox.onchange = () => {
-        const allChecked = suppliers.every(s => document.getElementById('chk_' + s.replace(/\s+/g, '_')).checked);
-        document.getElementById(selectAllId).checked = allChecked;
-
         if (checkbox.id === selectAllId) {
           const check = checkbox.checked;
-          suppliers.forEach(s => {
-            document.getElementById('chk_' + s.replace(/\s+/g, '_')).checked = check;
-          });
+          suppliers.forEach(s =>
+            document.getElementById('chk_' + s.replace(/\s+/g, '_')).checked = check
+          );
         }
-
-        selectedSuppliers = suppliers.filter(s => {
-          return document.getElementById('chk_' + s.replace(/\s+/g, '_')).checked;
-        });
-
-        fetchData();
+        updateSelected();
       };
     });
   }
@@ -211,5 +214,46 @@
     updateTotal();
   }
 
+  function captureQty(barcode, qty, price, supplier, name) {
+    qty = parseInt(qty);
+    if (isNaN(qty) || qty <= 0) {
+      delete orderData[barcode];
+    } else {
+      orderData[barcode] = {
+        barcode,
+        item: name,
+        supplier,
+        qty,
+        price,
+        amount: qty * price
+      };
+    }
+    renderTable();
+  }
+
   function updateTotal() {
     const total = Object.values(orderData).reduce((sum, o) => sum + o.amount, 0);
+    document.getElementById('totalOrder').textContent = `Total Order Amount: ₱${total.toFixed(2)}`;
+  }
+
+  function exportToCSV() {
+    const rows = [['Barcode', 'Item Name', 'Supplier', 'Qty', 'Price', 'Amount']];
+    Object.values(orderData).forEach(o => {
+      rows.push([o.barcode, o.item, o.supplier, o.qty, o.price, o.amount]);
+    });
+
+    const csv = rows.map(r => r.join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = document.createElement('a');
+    const supplierName = selectedSuppliers.length === 1 ? selectedSuppliers[0] : 'multiple';
+    const filename = `PO_${supplierName}_${new Date().toISOString().slice(0,10)}.csv`;
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+  }
+
+  window.onload = fetchData;
+</script>
+
+</body>
+</html>
