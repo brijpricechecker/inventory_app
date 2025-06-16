@@ -1,8 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta charset="UTF-8">
   <title>Inventory & Purchase Order</title>
   <style>
     body {
@@ -30,11 +29,11 @@
       border: 1px solid #ccc;
       padding: 8px;
     }
-    .highlight-zero {
-      background-color: #ffe5e5;
-    }
     .highlight-order {
       background-color: #e0ffe0;
+    }
+    .highlight-zero {
+      background-color: #ffe5e5;
     }
     .dropdown {
       position: relative;
@@ -52,7 +51,9 @@
     .dropdown-content label {
       display: block;
     }
-    .show { display: block; }
+    .show {
+      display: block;
+    }
   </style>
 </head>
 <body>
@@ -85,41 +86,64 @@
     const apiUrl = 'https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec';
     let allItems = [];
     let selectedSuppliers = [];
+    let allSuppliers = [];
     let useAlt = false;
     let isPO = false;
-    let allSuppliers = [];
-    let orderData = {}; // barcode: { qty, amount }
+    let orderData = {};
 
     window.onload = async () => {
-      const res = await fetch(`${apiUrl}?mode=inventory`);
+      const res = await fetch(`${apiUrl}?mode=suppliersOnly`);
       const data = await res.json();
       allSuppliers = data.suppliers;
       selectedSuppliers = [...allSuppliers];
       renderSupplierDropdown();
-      allItems = data.items;
-      renderTable();
+      fetchData(true);
     };
 
-    function renderSupplierDropdown() {
-      const container = document.getElementById('supplierList');
-      container.innerHTML = '';
+    function toggleMode() {
+      isPO = !isPO;
+      document.getElementById("modeToggle").textContent = isPO ? "Inventory" : "Purchase Order";
+      allItems = [];
+      orderData = {};
+      selectedSuppliers = isPO ? [] : [...allSuppliers];
+      document.getElementById("totalAmountCell").style.display = isPO ? "block" : "none";
+      fetchData(!isPO);
+    }
 
-      const allBox = document.createElement('input');
-      allBox.type = 'checkbox';
-      allBox.id = 'selectAllSuppliers';
+    function toggleAltSupplier() {
+      useAlt = !useAlt;
+      renderTable();
+    }
+
+    function toggleSupplierDropdown() {
+      document.getElementById("supplierList").classList.toggle("show");
+    }
+
+    function renderSupplierDropdown() {
+      const container = document.getElementById("supplierList");
+      container.innerHTML = "";
+
+      const allBox = document.createElement("input");
+      allBox.type = "checkbox";
+      allBox.id = "selectAllSuppliers";
       allBox.checked = selectedSuppliers.length === allSuppliers.length;
       allBox.onchange = () => {
         selectedSuppliers = allBox.checked ? [...allSuppliers] : [];
-        fetchData();
-        container.classList.remove('show');
+        document.querySelectorAll("#supplierList input[type=checkbox]").forEach(cb => {
+          if (cb.id !== "selectAllSuppliers") cb.checked = allBox.checked;
+        });
+        fetchData(!isPO);
       };
-      container.appendChild(allBox);
-      container.appendChild(document.createTextNode(' Select All'));
+
+      const allLabel = document.createElement("label");
+      allLabel.appendChild(allBox);
+      allLabel.appendChild(document.createTextNode("Select All"));
+      container.appendChild(allLabel);
 
       allSuppliers.forEach(supplier => {
-        const label = document.createElement('label');
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
+        const label = document.createElement("label");
+        const checkbox = document.createElement("input");
+        checkbox.type = "checkbox";
         checkbox.value = supplier;
         checkbox.checked = selectedSuppliers.includes(supplier);
         checkbox.onchange = () => {
@@ -128,99 +152,92 @@
           } else {
             selectedSuppliers = selectedSuppliers.filter(s => s !== supplier);
           }
-          document.getElementById('selectAllSuppliers').checked = selectedSuppliers.length === allSuppliers.length;
-          fetchData();
-          container.classList.remove('show');
+          allBox.checked = selectedSuppliers.length === allSuppliers.length;
+          fetchData(!isPO);
         };
         label.appendChild(checkbox);
-        label.appendChild(document.createTextNode(' ' + supplier));
+        label.appendChild(document.createTextNode(supplier));
         container.appendChild(label);
       });
     }
 
-    function toggleSupplierDropdown() {
-      document.getElementById('supplierList').classList.toggle('show');
-    }
+    async function fetchData(isInventoryMode) {
+      if (!isInventoryMode && selectedSuppliers.length === 0) {
+        allItems = [];
+        renderTable();
+        return;
+      }
 
-    function toggleAltSupplier() {
-      useAlt = !useAlt;
-      renderTable();
-    }
-
-    function toggleMode() {
-      isPO = !isPO;
-      orderData = {};
-      document.getElementById('modeToggle').textContent = isPO ? 'Inventory' : 'Purchase Order';
-      fetchData();
-    }
-
-    async function fetchData() {
-      const suppliersParam = selectedSuppliers.map(s => encodeURIComponent(s)).join(',');
-      const mode = isPO ? 'po' : 'inventory';
-      const res = await fetch(`${apiUrl}?mode=${mode}&suppliers=${suppliersParam}`);
+      const url = `${apiUrl}?mode=${isInventoryMode ? "inventory" : "po"}&suppliers=${encodeURIComponent(JSON.stringify(selectedSuppliers))}`;
+      const res = await fetch(url);
       const data = await res.json();
-      allItems = data.items;
+      const newItems = data.items;
+
+      if (!isInventoryMode && allItems.length > 0) {
+        const existingBarcodes = new Set(allItems.map(i => i.barcode));
+        const additional = newItems.filter(i => !existingBarcodes.has(i.barcode));
+        allItems.push(...additional);
+      } else {
+        allItems = newItems;
+      }
+
       renderTable();
     }
 
     function renderTable() {
-      const tbody = document.getElementById('tableBody');
-      const thead = document.getElementById('tableHeader');
-      tbody.innerHTML = '';
-      thead.innerHTML = '';
+      const tbody = document.getElementById("tableBody");
+      const header = document.getElementById("tableHeader");
+      tbody.innerHTML = "";
+      header.innerHTML = "";
 
-      const headers = isPO
-        ? ['Barcode', 'Item Name', 'Current Inventory', 'Supplier', 'Purchase Price', 'Order Quantity', 'Order Amount']
-        : ['Barcode', 'Item Name', 'Current Inventory', 'Supplier', 'Purchase Price', 'Inventory Amount'];
-
-      headers.forEach(h => {
-        const th = document.createElement('th');
-        th.textContent = h;
-        thead.appendChild(th);
-      });
-
-      const search = document.getElementById('searchBar').value.toLowerCase();
+      const search = document.getElementById("searchBar").value.toLowerCase();
 
       const visibleItems = allItems
-        .filter(item =>
-          (selectedSuppliers.length === 0 || selectedSuppliers.includes(item.supplier1)) &&
-          (item.name.toLowerCase().includes(search) || item.barcode.toLowerCase().includes(search))
-        )
+        .filter(item => (selectedSuppliers.includes(item.supplier1) || !isPO))
+        .filter(item => item.name.toLowerCase().includes(search) || item.barcode.includes(search))
         .sort((a, b) => {
           const sA = (a.supplier1 || '').toLowerCase();
           const sB = (b.supplier1 || '').toLowerCase();
-          return sA === sB ? a.name.localeCompare(b.name) : sA.localeCompare(sB);
+          if (sA !== sB) return sA.localeCompare(sB);
+          return a.name.localeCompare(b.name);
         });
 
+      const columns = ["Barcode", "Item Name", "Current Inventory", "Supplier", "Purchase Price"];
+      if (isPO) {
+        columns.push("Order Quantity", "Order Amount");
+      } else {
+        columns.push("Inventory Amount");
+      }
+
+      columns.forEach(col => {
+        const th = document.createElement("th");
+        th.textContent = col;
+        header.appendChild(th);
+      });
+
       visibleItems.forEach(item => {
+        const tr = document.createElement("tr");
         const supplier = useAlt ? item.supplier2 || item.supplier1 : item.supplier1;
         const price = useAlt ? item.altPurchasePrice || item.purchasePrice : item.purchasePrice;
         const barcode = item.barcode;
-        const savedQty = orderData[barcode]?.qty || 0;
-        const amount = price * savedQty;
-        const invAmount = item.currentInventory * price;
+        const qty = orderData[barcode]?.qty || 0;
+        const amount = price * qty;
+        const inventoryAmount = price * item.currentInventory;
 
-        const tr = document.createElement('tr');
-        if (item.currentInventory === 0) tr.classList.add('highlight-zero');
-        if (savedQty > 0) tr.classList.add('highlight-order');
+        if (item.currentInventory === 0) tr.classList.add("highlight-zero");
+        if (qty > 0) tr.classList.add("highlight-order");
 
-        tr.innerHTML = isPO ? `
+        tr.innerHTML = `
           <td>${barcode}</td>
           <td>${item.name}</td>
           <td>${item.currentInventory}</td>
           <td>${supplier}</td>
           <td>${price.toFixed(2)}</td>
-          <td><input type="number" min="0" value="${savedQty}" onchange="updateQty(this, '${barcode}', ${price})"></td>
-          <td>${amount.toFixed(2)}</td>
-        ` : `
-          <td>${barcode}</td>
-          <td>${item.name}</td>
-          <td>${item.currentInventory}</td>
-          <td>${supplier}</td>
-          <td>${price.toFixed(2)}</td>
-          <td>${invAmount.toFixed(2)}</td>
+          ${isPO 
+            ? `<td><input type="number" min="0" value="${qty}" onchange="updateQty(this, '${barcode}', ${price})"></td>
+               <td class="amount">${amount.toFixed(2)}</td>`
+            : `<td>${inventoryAmount.toFixed(2)}</td>`}
         `;
-
         tbody.appendChild(tr);
       });
 
@@ -234,9 +251,10 @@
     }
 
     function updateTotalAmount() {
+      if (!isPO) return;
       let total = 0;
       Object.values(orderData).forEach(o => total += o.amount);
-      document.getElementById('totalAmountCell').textContent = `Total Order Amount: PHP ${total.toFixed(2)}`;
+      document.getElementById("totalAmountCell").textContent = `Total Order Amount: PHP ${total.toFixed(2)}`;
     }
 
     function submitOrders() {
@@ -252,40 +270,61 @@
             amount: data.amount
           };
         });
-      if (!orders.length) return alert('No orders to submit.');
+      if (!orders.length) return alert("No orders to submit.");
       google.script.run.savePurchaseOrders(orders);
-      alert('Orders submitted successfully!');
+      alert("Orders submitted successfully!");
     }
 
     function downloadCSV() {
-      const rows = [['Date', 'Barcode', 'Item Name', '', 'Supplier', 'Purchase Price', 'Order Quantity', 'Total Order Amount']];
+      const rows = [["Date", "Barcode", "Item Name", "", "Supplier", "Purchase Price", "Quantity", "Total Amount"]];
       const now = new Date();
-      const timestamp = `${now.getMonth()+1}/${now.getDate()}/${now.getFullYear()} ${now.toLocaleTimeString('en-US',{hour12:false})}`;
-      const filename = `PO_${now.getFullYear()}-${now.getMonth()+1}-${now.getDate()}_${now.getHours()}-${now.getMinutes()}.csv`;
+      const timestamp = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}_${now.getHours()}-${now.getMinutes()}`;
+      const supplierPart = selectedSuppliers.length === 1 ? selectedSuppliers[0].replace(/ /g, "_") : "multiple";
+      const filename = isPO
+        ? `purchase_order_${supplierPart}_${timestamp}.csv`
+        : `inventory_${supplierPart}_${timestamp}.csv`;
 
-      Object.entries(orderData).forEach(([barcode, data]) => {
-        if (data.qty > 0) {
-          const item = allItems.find(i => i.barcode === barcode);
-          const supplier = useAlt ? item.supplier2 || item.supplier1 : item.supplier1;
-          const price = useAlt ? item.altPurchasePrice || item.purchasePrice : item.purchasePrice;
-          rows.push([
-            timestamp,
-            `="${barcode}"`,
-            item.name,
-            '',
-            supplier,
-            price.toFixed(2),
-            data.qty,
-            data.amount.toFixed(2)
-          ]);
-        }
-      });
+      const data = isPO
+        ? Object.entries(orderData).filter(([_, d]) => d.qty > 0).map(([barcode, d]) => {
+            const item = allItems.find(i => i.barcode === barcode);
+            const supplier = useAlt ? item.supplier2 || item.supplier1 : item.supplier1;
+            const price = useAlt ? item.altPurchasePrice || item.purchasePrice : item.purchasePrice;
+            return [
+              now.toLocaleString(),
+              `="${barcode}"`,
+              item.name,
+              "",
+              supplier,
+              price.toFixed(2),
+              d.qty,
+              d.amount.toFixed(2)
+            ];
+          })
+        : allItems
+            .filter(item => selectedSuppliers.includes(item.supplier1) || !isPO)
+            .map(item => {
+              const supplier = useAlt ? item.supplier2 || item.supplier1 : item.supplier1;
+              const price = useAlt ? item.altPurchasePrice || item.purchasePrice : item.purchasePrice;
+              const inventoryAmount = price * item.currentInventory;
+              return [
+                now.toLocaleString(),
+                `="${item.barcode}"`,
+                item.name,
+                "",
+                supplier,
+                price.toFixed(2),
+                item.currentInventory,
+                inventoryAmount.toFixed(2)
+              ];
+            });
 
-      const csvContent = rows.map(e => e.join(",")).join("\n");
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const link = document.createElement('a');
-      link.setAttribute('href', URL.createObjectURL(blob));
-      link.setAttribute('download', filename);
+      if (!data.length) return alert("No data to export.");
+
+      const csvContent = [rows[0], ...data].map(r => r.join(",")).join("\n");
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const link = document.createElement("a");
+      link.setAttribute("href", URL.createObjectURL(blob));
+      link.setAttribute("download", filename);
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
