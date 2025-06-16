@@ -50,7 +50,7 @@
 <div id="tableContainer"></div>
 
 <script>
-  const apiUrl = 'https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec'; // replace with deployed Apps Script URL
+  const apiUrl = 'https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec'; // Replace with your Apps Script URL
   let allItems = [];
   let orderData = {};
   let selectedSuppliers = [];
@@ -92,19 +92,45 @@
   function updateSupplierFilter(suppliers) {
     const container = document.getElementById('supplierFilter');
     container.innerHTML = '';
+
+    const selectAllId = 'chk_select_all';
+    const selectAll = document.createElement('div');
+    selectAll.innerHTML = `<label><input type="checkbox" id="${selectAllId}" checked /> Select All</label>`;
+    container.appendChild(selectAll);
+
     suppliers.forEach(supplier => {
       const id = 'chk_' + supplier.replace(/\s+/g, '_');
       const div = document.createElement('div');
       div.innerHTML = `<label><input type="checkbox" id="${id}" checked /> ${supplier}</label>`;
       container.appendChild(div);
-      document.getElementById(id).onchange = () => {
-        selectedSuppliers = suppliers.filter(s => {
-          const chk = document.getElementById('chk_' + s.replace(/\s+/g, '_'));
-          return chk && chk.checked;
-        });
-        fetchData();
+    });
+
+    function updateSelected() {
+      selectedSuppliers = suppliers.filter(s => {
+        const chk = document.getElementById('chk_' + s.replace(/\s+/g, '_'));
+        return chk && chk.checked;
+      });
+      fetchData();
+    }
+
+    document.getElementById(selectAllId).onchange = (e) => {
+      const checked = e.target.checked;
+      suppliers.forEach(s => {
+        const chk = document.getElementById('chk_' + s.replace(/\s+/g, '_'));
+        if (chk) chk.checked = checked;
+      });
+      updateSelected();
+    };
+
+    suppliers.forEach(s => {
+      const chk = document.getElementById('chk_' + s.replace(/\s+/g, '_'));
+      chk.onchange = () => {
+        const allChecked = suppliers.every(sup => document.getElementById('chk_' + sup.replace(/\s+/g, '_')).checked);
+        document.getElementById(selectAllId).checked = allChecked;
+        updateSelected();
       };
     });
+
     selectedSuppliers = [...suppliers];
   }
 
@@ -220,15 +246,16 @@
 
   function exportToCSV() {
     const rows = [];
-    const now = new Date();
-    const dateStr = now.toISOString().slice(0, 10); // YYYY-MM-DD
-    const supplierStr = selectedSuppliers.join('-').replace(/\s+/g, '_');
+    const today = new Date();
+    const dateStr = today.toISOString().split('T')[0]; // yyyy-mm-dd
+    const supplierStr = selectedSuppliers.length === 1 ? selectedSuppliers[0].replace(/\s+/g, '_') : 'multiple';
+    const filename = isPO ? `PO_${dateStr}_${supplierStr}.csv` : `inventory_${dateStr}_${supplierStr}.csv`;
 
     if (isPO) {
-      rows.push(['Date', 'Barcode', 'Item Name', 'Category', 'Supplier', 'Purchase Price', 'Order Quantity', 'Order Amount']);
+      rows.push(['Timestamp', 'Barcode', 'Item Name', 'Remarks', 'Supplier', 'Purchase Price', 'Order Quantity', 'Order Amount']);
       Object.values(orderData).forEach(order => {
         rows.push([
-          now.toLocaleString(),
+          new Date().toLocaleString(),
           order.barcode,
           order.name,
           '',
@@ -260,7 +287,7 @@
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = (isPO ? `PO_${dateStr}_${supplierStr}.csv` : `inventory_${dateStr}_${supplierStr}.csv`);
+    a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
   }
