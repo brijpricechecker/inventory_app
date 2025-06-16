@@ -1,194 +1,247 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Inventory & PO Dashboard</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Inventory & Purchase Order</title>
   <style>
-    body { font-family: Arial, sans-serif; padding: 20px; }
-    .controls { margin-bottom: 10px; }
-    .checkbox-dropdown { position: relative; display: inline-block; }
-    .checkbox-dropdown-content {
-      display: none; position: absolute; background: #fff; border: 1px solid #ccc;
-      max-height: 200px; overflow-y: auto; z-index: 999;
-    }
-    .checkbox-dropdown.open .checkbox-dropdown-content { display: block; }
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    h1 { margin-bottom: 10px; }
     table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-    th, td { border: 1px solid #ccc; padding: 5px; text-align: left; }
-    .highlight { background-color: #ffeeba; }
-    button { margin-right: 10px; }
+    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
+    th.sortable:hover { cursor: pointer; background-color: #f0f0f0; }
+    .zero-inventory { background-color: #ffe5e5; }
+    .filter-group { margin-bottom: 10px; }
+    .checkbox-popup { border: 1px solid #ccc; padding: 10px; max-height: 200px; overflow-y: auto; position: absolute; background: white; z-index: 10; display: none; }
+    .total-order { font-weight: bold; margin-top: 10px; }
+    .button-row { margin-top: 10px; }
+    button { margin-right: 10px; padding: 6px 12px; }
   </style>
 </head>
 <body>
-  <div class="controls">
-    <button onclick="switchMode(false)">Inventory View</button>
-    <button onclick="switchMode(true)">Purchase Order</button>
-    <button onclick="exportCSV()">Export CSV</button>
 
-    <div class="checkbox-dropdown" id="supplierDropdown">
-      <button onclick="toggleDropdown()">Select Supplier(s)</button>
-      <div class="checkbox-dropdown-content" id="supplierList"></div>
+  <h1>Inventory & Purchase Order</h1>
+
+  <div class="filter-group">
+    <label for="mode">Mode:</label>
+    <select id="mode">
+      <option value="inventory">Inventory</option>
+      <option value="po">Purchase Order</option>
+    </select>
+
+    <div style="display: inline-block; position: relative;">
+      <button id="supplierFilterBtn">Filter Suppliers</button>
+      <div id="supplierPopup" class="checkbox-popup"></div>
+    </div>
+
+    <div class="button-row">
+      <button onclick="exportCSV()">Export CSV</button>
     </div>
   </div>
 
-  <table id="itemTable"></table>
+  <div class="total-order" id="totalOrder" style="display: none;"></div>
+
+  <table id="dataTable">
+    <thead>
+      <tr id="tableHead"></tr>
+    </thead>
+    <tbody id="tableBody"></tbody>
+  </table>
 
   <script>
-    let allItems = [];
-    let allSuppliers = [];
+    let items = [];
     let selectedSuppliers = [];
-    let isPO = false;
-    const orderData = {};
+    let allSuppliers = [];
+    let currentMode = 'inventory';
+    let inventorySortAsc = true;
 
-    function switchMode(po) {
-      isPO = po;
+    document.getElementById('mode').addEventListener('change', () => {
+      currentMode = document.getElementById('mode').value;
       fetchData();
-    }
+    });
 
-    function toggleDropdown() {
-      document.getElementById("supplierDropdown").classList.toggle("open");
-    }
+    document.getElementById('supplierFilterBtn').addEventListener('click', () => {
+      const popup = document.getElementById('supplierPopup');
+      popup.style.display = popup.style.display === 'block' ? 'none' : 'block';
+    });
 
     function fetchData() {
-      const mode = isPO ? "po" : "inventory";
-      const params = selectedSuppliers.length > 0
-        ? `&suppliers=${selectedSuppliers.map(s => encodeURIComponent(s.toLowerCase())).join(",")}`
-        : "";
+      const params = new URLSearchParams();
+      params.append('mode', currentMode);
+      if (selectedSuppliers.length) {
+        params.append('suppliers', selectedSuppliers.join(','));
+      }
 
-      fetch(`https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec?mode=${mode}${params}`)
+      fetch(`https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec?${params.toString()}`)
         .then(res => res.json())
         .then(data => {
-          allItems = data.items;
+          items = data.items;
           allSuppliers = data.suppliers;
-          if (selectedSuppliers.length === 0) selectedSuppliers = [...allSuppliers];
-          renderSupplierDropdown();
+          if (!selectedSuppliers.length) selectedSuppliers = [...allSuppliers];
+          renderSupplierPopup();
           renderTable();
         });
     }
 
-    function renderSupplierDropdown() {
-      const container = document.getElementById("supplierList");
-      container.innerHTML = "";
+    function renderSupplierPopup() {
+      const popup = document.getElementById('supplierPopup');
+      popup.innerHTML = '';
+      const selectAll = document.createElement('div');
+      const allChecked = selectedSuppliers.length === allSuppliers.length;
+      selectAll.innerHTML = `<label><input type="checkbox" id="selectAll" ${allChecked ? 'checked' : ''}/> Select All</label>`;
+      popup.appendChild(selectAll);
 
-      const selectAll = document.createElement("div");
-      selectAll.innerHTML = `<label><input type="checkbox" id="selectAllBox"> Select All</label>`;
-      container.appendChild(selectAll);
-
-      document.getElementById("selectAllBox").addEventListener("change", e => {
-        selectedSuppliers = e.target.checked ? [...allSuppliers] : [];
-        renderSupplierDropdown();
+      document.getElementById('selectAll').addEventListener('change', (e) => {
+        if (e.target.checked) {
+          selectedSuppliers = [...allSuppliers];
+        } else {
+          selectedSuppliers = [];
+        }
         fetchData();
       });
 
       allSuppliers.forEach(supplier => {
-        const checkbox = document.createElement("div");
-        const checked = selectedSuppliers.includes(supplier);
-        checkbox.innerHTML = `<label><input type="checkbox" value="${supplier}" ${checked ? "checked" : ""}> ${supplier}</label>`;
-        container.appendChild(checkbox);
-      });
+        const checkbox = document.createElement('div');
+        checkbox.innerHTML = `<label><input type="checkbox" value="${supplier}" ${selectedSuppliers.includes(supplier) ? 'checked' : ''}/> ${supplier}</label>`;
+        popup.appendChild(checkbox);
 
-      container.querySelectorAll("input[type=checkbox]").forEach(input => {
-        if (input.id !== "selectAllBox") {
-          input.addEventListener("change", () => {
-            const value = input.value;
-            if (input.checked && !selectedSuppliers.includes(value)) {
-              selectedSuppliers.push(value);
-            } else if (!input.checked) {
-              selectedSuppliers = selectedSuppliers.filter(s => s !== value);
-            }
-            fetchData();
-          });
-        }
+        checkbox.querySelector('input').addEventListener('change', (e) => {
+          if (e.target.checked) {
+            selectedSuppliers.push(supplier);
+          } else {
+            selectedSuppliers = selectedSuppliers.filter(s => s !== supplier);
+          }
+          fetchData();
+        });
       });
-
-      document.getElementById("selectAllBox").checked = selectedSuppliers.length === allSuppliers.length;
     }
 
     function renderTable() {
-      const table = document.getElementById("itemTable");
-      let html = "<tr><th>Barcode</th><th>Item Name</th><th>Supplier</th><th>Purchase Price</th>";
+      const headRow = document.getElementById('tableHead');
+      const body = document.getElementById('tableBody');
+      headRow.innerHTML = '';
+      body.innerHTML = '';
 
-      if (isPO) {
-        html += "<th>Order Qty</th><th>Order Amount</th>";
-      } else {
-        html += "<th>Current Inventory</th>";
+      const headers = ['Barcode', 'Item Name', 'Supplier', 'Purchase Price', 'Current Inventory'];
+      if (currentMode === 'po') {
+        headers.push('Order Quantity', 'Order Amount');
       }
-      html += "</tr>";
 
-      allItems.forEach(item => {
-        const barcode = item.barcode;
-        const pp = isPO ? (item.altPurchasePrice || item.purchasePrice) : item.purchasePrice;
-        const qty = orderData[barcode]?.qty || 0;
-        const amt = qty * pp;
+      headers.forEach(header => {
+        const th = document.createElement('th');
+        th.textContent = header;
 
-        html += `<tr${qty > 0 ? ' class="highlight"' : ""}>`;
-        html += `<td>${item.barcode}</td><td>${item.name}</td><td>${item.supplier1}</td><td>${pp.toFixed(2)}</td>`;
-
-        if (isPO) {
-          html += `<td><input type="number" min="0" value="${qty}" onchange="updateQty('${barcode}', this.value, ${pp})" style="width: 80px;"></td>`;
-          html += `<td>${amt.toFixed(2)}</td>`;
-        } else {
-          html += `<td>${item.currentInventory}</td>`;
+        if (header === 'Current Inventory') {
+          th.classList.add('sortable');
+          th.innerHTML += ` <span style="font-size: 12px;">&#x21C5;</span>`;
+          th.addEventListener('click', () => {
+            inventorySortAsc = !inventorySortAsc;
+            items.sort((a, b) => inventorySortAsc ? a.currentInventory - b.currentInventory : b.currentInventory - a.currentInventory);
+            renderTable();
+          });
         }
 
-        html += "</tr>";
+        headRow.appendChild(th);
       });
 
-      table.innerHTML = html;
-    }
+      let totalOrder = 0;
 
-    function updateQty(barcode, value, price) {
-      const qty = parseFloat(value) || 0;
-      orderData[barcode] = { qty, amount: qty * price };
-      renderTable();
+      items.forEach(item => {
+        const row = document.createElement('tr');
+        if (item.currentInventory === 0) row.classList.add('zero-inventory');
+
+        const orderQtyInput = document.createElement('input');
+        orderQtyInput.type = 'number';
+        orderQtyInput.min = '0';
+        orderQtyInput.style.width = '80px';
+        orderQtyInput.value = item.qty || '';
+        orderQtyInput.addEventListener('input', (e) => {
+          item.qty = +e.target.value || 0;
+          item.amount = item.qty * (item.purchasePrice || 0);
+          renderTable(); // Refresh to update order amount and total
+        });
+
+        const orderAmount = item.qty ? (item.qty * item.purchasePrice).toFixed(2) : '';
+
+        const cols = [
+          item.barcode,
+          item.name,
+          item.supplier1,
+          item.purchasePrice.toFixed(2),
+          item.currentInventory
+        ];
+
+        if (currentMode === 'po') {
+          cols.push(orderQtyInput, orderAmount ? `₱${orderAmount}` : '');
+          totalOrder += item.qty ? item.qty * item.purchasePrice : 0;
+        }
+
+        cols.forEach(col => {
+          const td = document.createElement('td');
+          if (col instanceof HTMLElement) {
+            td.appendChild(col);
+          } else {
+            td.innerHTML = col;
+          }
+          row.appendChild(td);
+        });
+
+        body.appendChild(row);
+      });
+
+      const totalOrderDiv = document.getElementById('totalOrder');
+      if (currentMode === 'po') {
+        totalOrderDiv.textContent = `Total Order Amount: ₱${totalOrder.toFixed(2)}`;
+        totalOrderDiv.style.display = 'block';
+      } else {
+        totalOrderDiv.style.display = 'none';
+      }
     }
 
     function exportCSV() {
       const now = new Date();
       const pad = n => n.toString().padStart(2, '0');
-      const timestamp = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}`;
-      const supplierName = selectedSuppliers.length === 1 ? selectedSuppliers[0] : "multiple";
-      const filename = isPO ? `purchase_order_${supplierName}_${timestamp}.csv` : `inventory_${supplierName}_${timestamp}.csv`;
+      const ts = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}${pad(now.getMinutes())}`;
+      const supplierName = selectedSuppliers.length === 1 ? selectedSuppliers[0].replace(/\s+/g, '_') : 'multiple';
+      const modeLabel = currentMode === 'po' ? 'purchase_order' : 'inventory';
+      const filename = `${modeLabel}_${supplierName}_${ts}.csv`;
 
-      let rows = [];
-      if (isPO) {
-        rows.push(["Barcode", "Item Name", "Supplier", "Purchase Price", "Order Qty", "Order Amount"]);
-      } else {
-        rows.push(["Barcode", "Item Name", "Supplier", "Purchase Price", "Current Inventory"]);
-      }
+      const headers = ['Barcode', 'Item Name', 'Supplier', 'Purchase Price', 'Current Inventory'];
+      if (currentMode === 'po') headers.push('Order Quantity', 'Order Amount');
 
-      allItems.forEach(item => {
-        const barcode = item.barcode;
-        const pp = isPO ? (item.altPurchasePrice || item.purchasePrice) : item.purchasePrice;
-        const base = [item.barcode, item.name, item.supplier1, pp.toFixed(2)];
+      const rows = [headers];
 
-        if (isPO) {
-          const qty = orderData[barcode]?.qty || 0;
-          if (qty > 0) {
-            const amt = qty * pp;
-            rows.push([...base, qty, amt.toFixed(2)]);
-          }
-        } else {
-          rows.push([...base, item.currentInventory]);
+      items.forEach(item => {
+        if (currentMode === 'po' && (!item.qty || item.qty <= 0)) return;
+
+        const row = [
+          item.barcode,
+          item.name,
+          item.supplier1,
+          item.purchasePrice.toFixed(2),
+          item.currentInventory
+        ];
+
+        if (currentMode === 'po') {
+          row.push(item.qty || 0, (item.qty * item.purchasePrice).toFixed(2));
         }
+
+        rows.push(row);
       });
 
-      const csv = rows.map(r => r.join(",")).join("\n");
-      const blob = new Blob([csv], { type: "text/csv" });
+      const csvContent = rows.map(r => r.join(',')).join('\n');
+      const blob = new Blob([csvContent], { type: 'text/csv' });
       const url = URL.createObjectURL(blob);
 
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = filename;
+      link.click();
       URL.revokeObjectURL(url);
     }
 
-    // Initial load
-    window.onload = () => {
-      switchMode(false);
-    };
+    // Initial fetch
+    fetchData();
   </script>
 </body>
 </html>
