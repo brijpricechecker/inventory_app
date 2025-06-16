@@ -50,14 +50,14 @@
 <div id="tableContainer"></div>
 
 <script>
-  const apiUrl = 'https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec'; // replace with your deployed Apps Script URL
+  const apiUrl = 'https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec'; // Replace with deployed Apps Script URL
   let allItems = [];
   let orderData = {};
+  let allSuppliers = [];
   let selectedSuppliers = [];
   let isPO = false;
   let useAlt = false;
   let currentSort = { column: '', asc: true };
-  let allSuppliers = [];
 
   document.getElementById('modeToggle').onclick = () => {
     isPO = !isPO;
@@ -96,9 +96,9 @@
     container.innerHTML = '';
 
     const selectAllId = 'chk_select_all';
-    const selectAll = document.createElement('div');
-    selectAll.innerHTML = `<label><input type="checkbox" id="${selectAllId}" checked /> Select All</label>`;
-    container.appendChild(selectAll);
+    const allDiv = document.createElement('div');
+    allDiv.innerHTML = `<label><input type="checkbox" id="${selectAllId}" checked /> Select All</label>`;
+    container.appendChild(allDiv);
 
     suppliers.forEach(supplier => {
       const id = 'chk_' + supplier.replace(/\s+/g, '_');
@@ -107,33 +107,27 @@
       container.appendChild(div);
     });
 
-    function updateSelected() {
-      selectedSuppliers = suppliers.filter(s => {
-        const chk = document.getElementById('chk_' + s.replace(/\s+/g, '_'));
-        return chk && chk.checked;
-      });
-      fetchData(); // refetch data
-    }
+    selectedSuppliers = [...suppliers];
 
-    document.getElementById(selectAllId).onchange = (e) => {
-      const checked = e.target.checked;
-      suppliers.forEach(s => {
-        const chk = document.getElementById('chk_' + s.replace(/\s+/g, '_'));
-        if (chk) chk.checked = checked;
-      });
-      updateSelected();
-    };
-
-    suppliers.forEach(s => {
-      const chk = document.getElementById('chk_' + s.replace(/\s+/g, '_'));
-      chk.onchange = () => {
-        const allChecked = suppliers.every(sup => document.getElementById('chk_' + sup.replace(/\s+/g, '_')).checked);
+    container.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+      checkbox.onchange = () => {
+        const allChecked = suppliers.every(s => document.getElementById('chk_' + s.replace(/\s+/g, '_')).checked);
         document.getElementById(selectAllId).checked = allChecked;
-        updateSelected();
+
+        if (checkbox.id === selectAllId) {
+          const check = checkbox.checked;
+          suppliers.forEach(s => {
+            document.getElementById('chk_' + s.replace(/\s+/g, '_')).checked = check;
+          });
+        }
+
+        selectedSuppliers = suppliers.filter(s => {
+          return document.getElementById('chk_' + s.replace(/\s+/g, '_')).checked;
+        });
+
+        fetchData();
       };
     });
-
-    selectedSuppliers = [...suppliers];
   }
 
   async function fetchData() {
@@ -142,52 +136,67 @@
     const res = await fetch(`${apiUrl}?mode=${mode}&suppliers=${suppliersParam}`);
     const data = await res.json();
     allItems = data.items;
-    updateSupplierFilter(data.suppliers);
+    if (data.suppliers) updateSupplierFilter(data.suppliers);
+    renderTable();
+  }
+
+  function toggleSort(column) {
+    if (currentSort.column === column) {
+      currentSort.asc = !currentSort.asc;
+    } else {
+      currentSort.column = column;
+      currentSort.asc = true;
+    }
     renderTable();
   }
 
   function renderTable() {
     const container = document.getElementById('tableContainer');
-    if (!allItems || allItems.length === 0) {
+    if (allItems.length === 0) {
       container.innerHTML = '<p>No data found.</p>';
       return;
+    }
+
+    const sortedItems = [...allItems];
+    if (currentSort.column === 'inventory') {
+      sortedItems.sort((a, b) => {
+        const valA = a.currentInventory || 0;
+        const valB = b.currentInventory || 0;
+        return currentSort.asc ? valA - valB : valB - valA;
+      });
     }
 
     let html = `<table><thead><tr>
       <th>Barcode</th><th>Item Name</th><th>Supplier</th><th>Purchase Price</th>`;
 
     if (isPO) {
-      html += `<th>Current Inventory</th><th>Order Qty</th><th>Order Amount</th>`;
+      html += `<th onclick="toggleSort('inventory')">Current Inventory &#x21C5;</th><th>Order Qty</th><th>Order Amount</th>`;
     } else {
-      html += `<th>Inventory</th><th>Value</th>`;
+      html += `<th onclick="toggleSort('inventory')">Inventory &#x21C5;</th><th>Value</th>`;
     }
 
     html += `</tr></thead><tbody>`;
 
-    allItems.forEach(item => {
+    sortedItems.forEach(item => {
       const supplier = useAlt ? item.supplier2 : item.supplier1;
       const price = useAlt ? item.altPurchasePrice : item.purchasePrice;
       const inv = item.currentInventory || 0;
-      const isOrdered = !!orderData[item.barcode];
+      const ordered = orderData[item.barcode];
 
-      let rowClass = '';
-      if (isPO && isOrdered) rowClass = 'highlight';
-      if (!isPO && inv === 0) rowClass = 'highlight';
-
-      let row = `<tr class="${rowClass}">`;
-      row += `<td>'${item.barcode}</td>`;
+      let row = `<tr${isPO && ordered ? ' class="highlight"' : ''}>`;
+      row += `<td>${item.barcode}</td>`;
       row += `<td>${item.name}</td>`;
       row += `<td>${supplier}</td>`;
       row += `<td>${price.toFixed(2)}</td>`;
 
       if (isPO) {
-        const qty = orderData[item.barcode]?.qty || '';
-        const amt = orderData[item.barcode]?.amount || '';
+        const qty = ordered?.qty || '';
+        const amt = qty ? (qty * price).toFixed(2) : '';
         row += `<td>${inv}</td>`;
-        row += `<td><input type="number" min="0" step="1" value="${qty}" 
-          oninput="captureQty('${item.barcode}', this.value, ${price})"
+        row += `<td><input type="number" min="0" step="1" value="${qty}"
+          oninput="captureQty('${item.barcode}', this.value, ${price}, '${supplier}', '${item.name}')"
           onfocus="this.select()" onkeydown="event.stopPropagation();"></td>`;
-        row += `<td>${amt ? amt.toFixed(2) : ''}</td>`;
+        row += `<td>${amt}</td>`;
       } else {
         row += `<td>${inv}</td>`;
         row += `<td>${(inv * price).toFixed(2)}</td>`;
@@ -202,84 +211,5 @@
     updateTotal();
   }
 
-  let qtyTimeout;
-  function captureQty(barcode, val, price) {
-    clearTimeout(qtyTimeout);
-    qtyTimeout = setTimeout(() => {
-      const qty = parseInt(val);
-      if (qty > 0) {
-        const item = allItems.find(i => i.barcode === barcode);
-        const supplier = useAlt ? item.supplier2 : item.supplier1;
-        orderData[barcode] = {
-          qty,
-          amount: qty * price,
-          barcode,
-          name: item.name,
-          supplier,
-          purchasePrice: price
-        };
-      } else {
-        delete orderData[barcode];
-      }
-      updateTotal();
-      renderTable();
-    }, 200);
-  }
-
   function updateTotal() {
     const total = Object.values(orderData).reduce((sum, o) => sum + o.amount, 0);
-    document.getElementById('totalOrder').textContent = isPO ? `Total Order Amount: ₱${total.toFixed(2)}` : '';
-  }
-
-  function exportToCSV() {
-    const rows = [];
-    const today = new Date();
-    const dateStr = today.toISOString().split('T')[0];
-    const supplierStr = selectedSuppliers.length === 1 ? selectedSuppliers[0].replace(/\s+/g, '_') : 'multiple';
-    const filename = isPO ? `PO_${dateStr}_${supplierStr}.csv` : `inventory_${dateStr}_${supplierStr}.csv`;
-
-    if (isPO) {
-      rows.push(['Timestamp', 'Barcode', 'Item Name', 'Remarks', 'Supplier', 'Purchase Price', 'Order Quantity', 'Order Amount']);
-      Object.values(orderData).forEach(order => {
-        rows.push([
-          new Date().toLocaleString(),
-          order.barcode,
-          order.name,
-          '',
-          order.supplier,
-          order.purchasePrice.toFixed(2),
-          order.qty,
-          order.amount.toFixed(2)
-        ]);
-      });
-    } else {
-      rows.push(['Barcode', 'Item Name', 'Supplier', 'Purchase Price', 'Inventory', 'Value']);
-      allItems.forEach(item => {
-        const supplier = useAlt ? item.supplier2 : item.supplier1;
-        const price = useAlt ? item.altPurchasePrice : item.purchasePrice;
-        const inv = item.currentInventory || 0;
-        rows.push([
-          item.barcode,
-          item.name,
-          supplier,
-          price.toFixed(2),
-          inv,
-          (inv * price).toFixed(2)
-        ]);
-      });
-    }
-
-    const csv = rows.map(r => r.map(v => `"${v}"`).join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
-  }
-
-  fetchData();
-</script>
-</body>
-</html>
