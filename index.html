@@ -1,6 +1,8 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <title>Inventory & Purchase Order</title>
   <style>
     body {
@@ -80,21 +82,21 @@
         <th>Current Inventory</th>
         <th>Supplier</th>
         <th>Purchase Price</th>
-        <th id="qtyHeader">Order Quantity</th>
-        <th id="amountHeader">Order/Inventory Amount</th>
+        <th>Order Quantity</th>
+        <th>Order Amount</th>
       </tr>
     </thead>
     <tbody id="tableBody"></tbody>
   </table>
 
   <script>
-    const apiUrl = 'https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec';
+    const apiUrl = 'https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec'; // Replace with actual Google Apps Script deployed URL
     let allItems = [];
     let selectedSuppliers = [];
     let useAlt = false;
     let isPO = false;
     let allSuppliers = [];
-    let orderData = {};
+    let orderData = {}; // barcode: { qty, amount }
 
     window.onload = async () => {
       const res = await fetch(`${apiUrl}?mode=suppliersOnly`);
@@ -102,25 +104,27 @@
       allSuppliers = data.suppliers;
       selectedSuppliers = [...allSuppliers];
       renderSupplierDropdown();
-      fetchData(true);
+      fetchData(true); // Load inventory view by default
     };
 
     async function fetchData(isInventoryMode) {
-      if (!isInventoryMode && selectedSuppliers.length === 0) {
-        allItems = [];
-        renderTable();
-        return;
-      }
-      let url = `${apiUrl}?mode=${isInventoryMode ? 'inventory' : 'po'}&suppliers=${encodeURIComponent(JSON.stringify(selectedSuppliers))}`;
+      const suppliersQuery = encodeURIComponent(JSON.stringify(selectedSuppliers));
+      const url = `${apiUrl}?mode=${isInventoryMode ? 'inventory' : 'po'}&suppliers=${suppliersQuery}`;
       const res = await fetch(url);
       const data = await res.json();
+      const newItems = data.items;
 
       if (isInventoryMode) {
-        allItems = data.items;
+        allItems = newItems;
       } else {
-        const newItems = data.items.filter(item => !allItems.some(ai => ai.barcode === item.barcode));
-        allItems = [...allItems, ...newItems];
+        const existingBarcodes = new Set(allItems.map(i => i.barcode));
+        const merged = [...allItems];
+        for (const item of newItems) {
+          if (!existingBarcodes.has(item.barcode)) merged.push(item);
+        }
+        allItems = merged;
       }
+
       renderTable();
     }
 
@@ -138,7 +142,7 @@
         container.classList.remove('show');
       };
       container.appendChild(allBox);
-      container.appendChild(document.createTextNode('Select All'));
+      container.appendChild(document.createTextNode(' Select All'));
 
       allSuppliers.forEach(supplier => {
         const label = document.createElement('label');
@@ -157,7 +161,7 @@
           container.classList.remove('show');
         };
         label.appendChild(checkbox);
-        label.appendChild(document.createTextNode(supplier));
+        label.appendChild(document.createTextNode(' ' + supplier));
         container.appendChild(label);
       });
     }
@@ -173,8 +177,8 @@
 
     function toggleMode() {
       isPO = !isPO;
-      allItems = [];
       orderData = {};
+      allItems = [];
       document.getElementById('modeToggle').textContent = isPO ? 'Inventory' : 'Purchase Order';
       if (!isPO) {
         selectedSuppliers = [...allSuppliers];
@@ -189,43 +193,39 @@
       tbody.innerHTML = '';
       const search = document.getElementById('searchBar').value.toLowerCase();
 
-      document.getElementById('qtyHeader').style.display = isPO ? '' : 'none';
-      document.getElementById('amountHeader').textContent = isPO ? 'Order Amount' : 'Inventory Amount';
-
-      allItems
-        .filter(item => isPO ? selectedSuppliers.includes(item.supplier1) : true)
-        .filter(item => item.name.toLowerCase().includes(search) || item.barcode.includes(search))
+      const visibleItems = allItems
+        .filter(item =>
+          (selectedSuppliers.length === 0 || selectedSuppliers.includes(item.supplier1)) &&
+          (item.name.toLowerCase().includes(search) || item.barcode.toLowerCase().includes(search))
+        )
         .sort((a, b) => {
-          const sA = (useAlt ? a.supplier2 || a.supplier1 : a.supplier1).toLowerCase();
-          const sB = (useAlt ? b.supplier2 || b.supplier1 : b.supplier1).toLowerCase();
-          if (sA === sB) return a.name.localeCompare(b.name);
-          return sA.localeCompare(sB);
-        })
-        .forEach(item => {
-          const supplier = useAlt ? item.supplier2 || item.supplier1 : item.supplier1;
-          const price = useAlt ? item.altPurchasePrice || item.purchasePrice : item.purchasePrice;
-          const barcode = item.barcode;
-          const savedQty = orderData[barcode]?.qty || 0;
-          const orderAmount = price * savedQty;
-          const inventoryAmount = price * item.currentInventory;
-
-          const tr = document.createElement('tr');
-          if (item.currentInventory === 0) tr.classList.add('highlight-zero');
-          if (savedQty > 0) tr.classList.add('highlight-order');
-
-          tr.innerHTML = `
-            <td>${barcode}</td>
-            <td>${item.name}</td>
-            <td>${item.currentInventory}</td>
-            <td>${supplier}</td>
-            <td>${price.toFixed(2)}</td>
-            <td style="display:${isPO ? '' : 'none'}">
-              <input type="number" min="0" value="${savedQty}" onchange="updateQty(this, '${barcode}', ${price})">
-            </td>
-            <td class="amount">${(isPO ? orderAmount : inventoryAmount).toFixed(2)}</td>
-          `;
-          tbody.appendChild(tr);
+          const sA = (a.supplier1 || '').toLowerCase();
+          const sB = (b.supplier1 || '').toLowerCase();
+          return sA === sB ? a.name.localeCompare(b.name) : sA.localeCompare(sB);
         });
+
+      visibleItems.forEach(item => {
+        const supplier = useAlt ? item.supplier2 || item.supplier1 : item.supplier1;
+        const price = useAlt ? item.altPurchasePrice || item.purchasePrice : item.purchasePrice;
+        const barcode = item.barcode;
+        const savedQty = orderData[barcode]?.qty || 0;
+        const amount = price * savedQty;
+
+        const tr = document.createElement('tr');
+        if (item.currentInventory === 0) tr.classList.add('highlight-zero');
+        if (savedQty > 0) tr.classList.add('highlight-order');
+
+        tr.innerHTML = `
+          <td>${barcode}</td>
+          <td>${item.name}</td>
+          <td>${item.currentInventory}</td>
+          <td>${supplier}</td>
+          <td>${price.toFixed(2)}</td>
+          <td><input type="number" min="0" value="${savedQty}" onchange="updateQty(this, '${barcode}', ${price})"></td>
+          <td>${amount.toFixed(2)}</td>
+        `;
+        tbody.appendChild(tr);
+      });
 
       updateTotalAmount();
     }
@@ -233,14 +233,10 @@
     function updateQty(input, barcode, price) {
       const qty = parseInt(input.value) || 0;
       orderData[barcode] = { qty, amount: qty * price };
-      renderTable();
+      renderTable(); // Re-render to update highlights and totals
     }
 
     function updateTotalAmount() {
-      if (!isPO) {
-        document.getElementById('totalAmountCell').textContent = '';
-        return;
-      }
       let total = 0;
       Object.values(orderData).forEach(o => total += o.amount);
       document.getElementById('totalAmountCell').textContent = `Total Order Amount: PHP ${total.toFixed(2)}`;
