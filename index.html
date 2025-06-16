@@ -70,18 +70,17 @@
       const allBox = document.createElement('input');
       allBox.type = 'checkbox';
       allBox.id = 'selectAllSuppliers';
-      allBox.checked = selectedSuppliers.length === allSuppliers.length;
+      allBox.checked = selectedSuppliers.length === allSuppliers.length &&
+                       allSuppliers.every(s => selectedSuppliers.includes(s));
       allBox.onchange = () => {
         if (allBox.checked) {
           selectedSuppliers = [...allSuppliers];
         } else {
           selectedSuppliers = [];
         }
-
         container.querySelectorAll('input[type="checkbox"]').forEach(cb => {
           if (cb !== allBox) cb.checked = allBox.checked;
         });
-
         fetchData();
         container.parentElement.classList.remove('show');
       };
@@ -100,9 +99,9 @@
           } else {
             selectedSuppliers = selectedSuppliers.filter(s => s !== supplier);
           }
-
-          document.getElementById('selectAllSuppliers').checked = selectedSuppliers.length === allSuppliers.length;
-
+          document.getElementById('selectAllSuppliers').checked =
+            selectedSuppliers.length === allSuppliers.length &&
+            allSuppliers.every(s => selectedSuppliers.includes(s));
           fetchData();
           container.parentElement.classList.remove('show');
         };
@@ -122,7 +121,9 @@
         .then(res => res.json())
         .then(data => {
           allSuppliers = data.suppliers;
-          if (!selectedSuppliers.length) selectedSuppliers = [...allSuppliers];
+          if (!selectedSuppliers.length || selectedSuppliers.some(s => !allSuppliers.includes(s))) {
+            selectedSuppliers = [...allSuppliers];
+          }
           currentItems = data.items;
           renderSupplierDropdown();
           renderTable();
@@ -153,14 +154,17 @@
         headersRow.appendChild(th);
       });
 
+      const filteredItems = currentItems.filter(item =>
+        selectedSuppliers.includes(item.supplier1)
+      );
+
       let totalOrderAmount = 0;
 
-      currentItems.forEach(item => {
+      filteredItems.forEach(item => {
         const tr = document.createElement('tr');
         if (mode === 'inventory' && item.currentInventory === 0) tr.classList.add('zero-inventory');
 
         const supplierName = item.supplier1 || '';
-
         tr.innerHTML = `
           <td>${item.barcode}</td>
           <td>${item.name}</td>
@@ -189,7 +193,7 @@
           tr.appendChild(amountCell);
 
           if (item.orderQty && item.orderQty > 0) {
-            tr.style.backgroundColor = '#e6f7ff'; // light blue for active orders
+            tr.style.backgroundColor = '#e6f7ff';
             totalOrderAmount += item.orderAmount || 0;
           }
         }
@@ -219,12 +223,14 @@
       if (mode === 'inventory') {
         rows.push(['Barcode', 'Item Name', 'Supplier', 'Current Inventory']);
         currentItems.forEach(item => {
-          rows.push([item.barcode, item.name, item.supplier1, item.currentInventory]);
+          if (selectedSuppliers.includes(item.supplier1)) {
+            rows.push([item.barcode, item.name, item.supplier1, item.currentInventory]);
+          }
         });
       } else {
         rows.push(['Barcode', 'Item Name', 'Supplier', 'Current Inventory', 'Order Qty', 'Order Amount']);
         currentItems.forEach(item => {
-          if (item.orderQty > 0) {
+          if (selectedSuppliers.includes(item.supplier1) && item.orderQty > 0) {
             rows.push([
               item.barcode,
               item.name,
