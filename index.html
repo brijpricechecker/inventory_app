@@ -5,75 +5,75 @@
   <title>Inventory & Purchase Order</title>
   <style>
     body { font-family: Arial, sans-serif; margin: 0; padding: 20px; }
-    h1 { font-size: 24px; }
-    .controls { margin-bottom: 10px; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-    .dropdown { position: relative; display: inline-block; }
+    .controls { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 10px; align-items: center; }
+    .btn { padding: 6px 12px; border: 1px solid #ccc; background: #f0f0f0; cursor: pointer; }
+    .btn.active { background-color: #007bff; color: #fff; border-color: #007bff; }
+    .dropdown { position: relative; }
     .dropdown-content {
-      display: none; position: absolute; background-color: #fff; min-width: 200px;
-      box-shadow: 0px 4px 8px rgba(0,0,0,0.1); padding: 10px; z-index: 1;
-      max-height: 300px; overflow-y: auto; border: 1px solid #ccc;
+      position: absolute; background: #fff; border: 1px solid #ccc;
+      padding: 10px; box-shadow: 0px 4px 8px rgba(0,0,0,0.1);
+      display: none; z-index: 1; max-height: 300px; overflow-y: auto;
     }
-    .dropdown-content label { display: block; margin: 5px 0; }
-    .dropdown-content input[type="checkbox"] { margin-right: 5px; }
     .dropdown.show .dropdown-content { display: block; }
+    .dropdown-content label { display: block; margin: 5px 0; }
     table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-    th, td { border: 1px solid #ccc; padding: 8px; text-align: left; }
-    th.sortable { cursor: pointer; }
-    .zero-inventory { background-color: #ffe5e5; }
-    .highlight-order { background-color: #e6f7ff; }
-    .btn { padding: 6px 12px; cursor: pointer; border: 1px solid #ccc; background: #f0f0f0; }
-    .btn.active { background-color: #007bff; color: white; border-color: #007bff; }
-    #totalAmountDisplay { margin-top: 10px; font-weight: bold; }
+    th, td { border: 1px solid #ccc; padding: 8px; }
+    .zero-inventory { background: #ffe5e5; }
+    .highlight-order { background: #e6f7ff; }
+    #totalAmountDisplay { font-weight: bold; margin-left: auto; }
   </style>
 </head>
 <body>
   <h1>Inventory & Purchase Order</h1>
   <div class="controls">
-    <button class="btn" onclick="setMode('inventory')">Inventory</button>
-    <button class="btn" onclick="setMode('po')">Purchase Order</button>
-
+    <button id="modeToggle" class="btn" onclick="toggleMode()">Purchase Order</button>
     <div class="dropdown">
-      <button class="btn" onclick="toggleDropdown()">Select Suppliers ▼</button>
+      <button class="btn" onclick="toggleSupplierDropdown()">Select Suppliers ▼</button>
       <div class="dropdown-content" id="supplierList"></div>
     </div>
-
-    <label id="altSupplierToggle" style="display:none;">
-      <input type="checkbox" onchange="toggleAltSupplier(this)"> Use Alt Supplier
+    <label id="altToggle" style="display: none;">
+      <input type="checkbox" onchange="toggleAltSupplier()"> Use Alt Supplier
     </label>
-
     <button class="btn" onclick="exportCSV()">Export CSV</button>
-    <span id="totalAmountDisplay" style="display:none;"></span>
+    <span id="totalAmountDisplay" style="display: none;"></span>
   </div>
 
-  <table id="itemTable">
+  <table>
     <thead><tr id="tableHeaders"></tr></thead>
-    <tbody></tbody>
+    <tbody id="tableBody"></tbody>
   </table>
 
   <script>
-    let mode = 'inventory';
-    let allSuppliers = [];
-    let selectedSuppliers = [];
-    let currentItems = [];
-    let inventorySortAsc = true;
-    let useAltSupplier = false;
+    const apiUrl = 'https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec'; // Replace with your actual URL
+    let allSuppliers = [], selectedSuppliers = [];
+    let allItems = [], useAlt = false, isPO = true;
 
-    function setMode(newMode) {
-      mode = newMode;
-      document.getElementById('totalAmountDisplay').style.display = (mode === 'po') ? 'block' : 'none';
-      document.getElementById('altSupplierToggle').style.display = (mode === 'po') ? 'inline' : 'none';
-      document.querySelectorAll('.controls .btn').forEach(btn => btn.classList.remove('active'));
-      document.querySelector(`.controls .btn:nth-child(${mode === 'inventory' ? 1 : 2})`).classList.add('active');
+    function toggleMode() {
+      isPO = !isPO;
+      document.getElementById('modeToggle').textContent = isPO ? 'Inventory' : 'Purchase Order';
+      document.getElementById('altToggle').style.display = isPO ? 'inline' : 'none';
       fetchData();
     }
 
-    function toggleAltSupplier(cb) {
-      useAltSupplier = cb.checked;
+    function toggleAltSupplier() {
+      useAlt = !useAlt;
       renderTable();
     }
 
-    function toggleDropdown() {
-      document.getElementById('supplierList').parentElement.classList.toggle('show');
+    function toggleSupplierDropdown() {
+      document.querySelector('.dropdown').classList.toggle('show');
+    }
+
+    async function fetchData() {
+      const suppliersParam = selectedSuppliers.length > 0 ? selectedSuppliers.map(encodeURIComponent).join(',') : '';
+      const modeParam = isPO ? 'po' : 'inventory';
+      const res = await fetch(`${apiUrl}?mode=${modeParam}&suppliers=${suppliersParam}`);
+      const data = await res.json();
+      allSuppliers = data.suppliers;
+      if (selectedSuppliers.length === 0) selectedSuppliers = [...allSuppliers];
+      allItems = data.items;
+      renderSupplierDropdown();
+      renderTable();
     }
 
     function renderSupplierDropdown() {
@@ -82,109 +82,80 @@
 
       const allBox = document.createElement('input');
       allBox.type = 'checkbox';
-      allBox.id = 'selectAllSuppliers';
       allBox.checked = selectedSuppliers.length === allSuppliers.length;
       allBox.onchange = () => {
         selectedSuppliers = allBox.checked ? [...allSuppliers] : [];
-        container.querySelectorAll('input[type="checkbox"]').forEach(cb => {
-          if (cb !== allBox) cb.checked = allBox.checked;
-        });
+        renderSupplierDropdown();
         fetchData();
-        container.parentElement.classList.remove('show');
+        document.querySelector('.dropdown').classList.remove('show');
       };
       container.appendChild(allBox);
       container.appendChild(document.createTextNode(' Select All'));
 
       allSuppliers.forEach(supplier => {
         const label = document.createElement('label');
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        checkbox.value = supplier;
-        checkbox.checked = selectedSuppliers.includes(supplier);
-        checkbox.onchange = () => {
-          if (checkbox.checked) {
-            if (!selectedSuppliers.includes(supplier)) selectedSuppliers.push(supplier);
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.value = supplier;
+        cb.checked = selectedSuppliers.includes(supplier);
+        cb.onchange = () => {
+          if (cb.checked) {
+            if (!selectedSuppliers.includes(cb.value)) selectedSuppliers.push(cb.value);
           } else {
-            selectedSuppliers = selectedSuppliers.filter(s => s !== supplier);
+            selectedSuppliers = selectedSuppliers.filter(s => s !== cb.value);
           }
-          document.getElementById('selectAllSuppliers').checked = selectedSuppliers.length === allSuppliers.length;
           fetchData();
-          container.parentElement.classList.remove('show');
+          document.querySelector('.dropdown').classList.remove('show');
         };
-        label.appendChild(checkbox);
+        label.appendChild(cb);
         label.appendChild(document.createTextNode(' ' + supplier));
         container.appendChild(label);
       });
     }
 
-    function fetchData() {
-      const finalSuppliers = selectedSuppliers.length ? selectedSuppliers : allSuppliers;
-      const params = new URLSearchParams();
-      params.append('mode', mode);
-      params.append('suppliers', finalSuppliers.join(','));
-
-      fetch(`https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec?${params}`)
-        .then(res => res.json())
-        .then(data => {
-          allSuppliers = data.suppliers;
-          if (!selectedSuppliers.length) selectedSuppliers = [...allSuppliers];
-          currentItems = data.items;
-          renderSupplierDropdown();
-          renderTable();
-        });
-    }
-
     function renderTable() {
-      const headersRow = document.getElementById('tableHeaders');
-      const tbody = document.querySelector('#itemTable tbody');
-      tbody.innerHTML = '';
-      headersRow.innerHTML = '';
+      const headers = isPO
+        ? ['Barcode', 'Item Name', 'Supplier', 'Current Inventory', 'Order Qty', 'Order Amount']
+        : ['Barcode', 'Item Name', 'Supplier', 'Purchase Price', 'Current Inventory', 'Inventory Amount'];
 
-      const headers = mode === 'inventory'
-        ? ['Barcode', 'Item Name', 'Supplier', 'Purchase Price', 'Current Inventory', 'Inventory Amount']
-        : ['Barcode', 'Item Name', 'Supplier', 'Current Inventory', 'Order Qty', 'Order Amount'];
+      const headerRow = document.getElementById('tableHeaders');
+      const body = document.getElementById('tableBody');
+      headerRow.innerHTML = '';
+      body.innerHTML = '';
+      document.getElementById('totalAmountDisplay').style.display = isPO ? 'inline' : 'none';
 
       headers.forEach(h => {
         const th = document.createElement('th');
         th.textContent = h;
-        if (h === 'Current Inventory') {
-          th.classList.add('sortable');
-          th.onclick = () => {
-            inventorySortAsc = !inventorySortAsc;
-            currentItems.sort((a, b) => inventorySortAsc ? a.currentInventory - b.currentInventory : b.currentInventory - a.currentInventory);
-            renderTable();
-          };
-        }
-        headersRow.appendChild(th);
+        headerRow.appendChild(th);
       });
 
       let totalOrderAmount = 0;
 
-      currentItems.forEach(item => {
+      allItems.forEach(item => {
         const tr = document.createElement('tr');
-        if (mode === 'inventory' && item.currentInventory === 0) tr.classList.add('zero-inventory');
+        const supplier = useAlt ? item.altSupplier : item.supplier1;
+        const price = useAlt ? item.altPurchasePrice : item.purchasePrice;
 
-        const supplier = useAltSupplier ? item.altSupplier : item.supplier1;
-        const price = useAltSupplier ? item.altPurchasePrice : item.purchasePrice;
+        if (!supplier || !selectedSuppliers.includes(supplier)) return;
 
-        tr.innerHTML = `
-          <td>'${item.barcode}'</td>
-          <td>${item.name}</td>
-          <td>${supplier}</td>
-        `;
+        if (!isPO && item.currentInventory === 0) tr.classList.add('zero-inventory');
 
-        if (mode === 'inventory') {
+        let cells = [
+          `<td>'${item.barcode}'</td>`,
+          `<td>${item.name}</td>`,
+          `<td>${supplier}</td>`
+        ];
+
+        if (!isPO) {
           const amount = price * item.currentInventory;
-          tr.innerHTML += `
-            <td>${price.toFixed(2)}</td>
-            <td>${item.currentInventory}</td>
-            <td>${amount.toFixed(2)}</td>
-          `;
-        }
-
-        if (mode === 'po') {
-          tr.innerHTML += `<td>${item.currentInventory}</td>`;
-
+          cells.push(
+            `<td>${price.toFixed(2)}</td>`,
+            `<td>${item.currentInventory}</td>`,
+            `<td>${amount.toFixed(2)}</td>`
+          );
+        } else {
+          cells.push(`<td>${item.currentInventory}</td>`);
           const qtyInput = document.createElement('input');
           qtyInput.type = 'number';
           qtyInput.min = 0;
@@ -193,21 +164,17 @@
             item.orderQty = parseFloat(qtyInput.value) || 0;
             item.orderAmount = item.orderQty * price;
             amountCell.textContent = item.orderAmount.toFixed(2);
+            tr.classList.toggle('highlight-order', item.orderQty > 0);
             calculateTotalAmount();
-            if (item.orderQty > 0) {
-              tr.classList.add('highlight-order');
-            } else {
-              tr.classList.remove('highlight-order');
-            }
           };
 
           const qtyCell = document.createElement('td');
           qtyCell.appendChild(qtyInput);
-          tr.appendChild(qtyCell);
+          cells.push(qtyCell.outerHTML);
 
           const amountCell = document.createElement('td');
           amountCell.textContent = item.orderAmount ? item.orderAmount.toFixed(2) : '0.00';
-          tr.appendChild(amountCell);
+          cells.push(amountCell.outerHTML);
 
           if (item.orderQty > 0) {
             tr.classList.add('highlight-order');
@@ -215,52 +182,53 @@
           }
         }
 
-        tbody.appendChild(tr);
+        tr.innerHTML = cells.join('');
+        body.appendChild(tr);
       });
 
-      document.getElementById('totalAmountDisplay').textContent =
-        (mode === 'po') ? `Total Order Amount: PHP ${totalOrderAmount.toFixed(2)}` : '';
+      if (isPO) {
+        document.getElementById('totalAmountDisplay').textContent = `Total: PHP ${totalOrderAmount.toFixed(2)}`;
+      }
     }
 
     function calculateTotalAmount() {
       let total = 0;
-      currentItems.forEach(item => {
-        const price = useAltSupplier ? item.altPurchasePrice : item.purchasePrice;
+      allItems.forEach(item => {
+        const price = useAlt ? item.altPurchasePrice : item.purchasePrice;
         if (item.orderQty && item.orderQty > 0) {
-          item.orderAmount = item.orderQty * price;
-          total += item.orderAmount;
+          total += item.orderQty * price;
         }
       });
-      document.getElementById('totalAmountDisplay').textContent = `Total Order Amount: PHP ${total.toFixed(2)}`;
+      document.getElementById('totalAmountDisplay').textContent = `Total: PHP ${total.toFixed(2)}`;
     }
 
     function exportCSV() {
-      let rows = [];
-      const now = new Date().toISOString().replace(/[:.]/g, '-');
-      const supplierLabel = selectedSuppliers.length === 1 ? selectedSuppliers[0] : 'multiple';
-      const filename = (mode === 'po' ? `purchase_order_${supplierLabel}_${now}.csv` : `inventory_${supplierLabel}_${now}.csv`);
+      const rows = [];
+      const filename = `${isPO ? 'purchase_order' : 'inventory'}_${new Date().toISOString().replace(/[:.]/g, '-')}.csv`;
 
-      if (mode === 'inventory') {
+      if (!isPO) {
         rows.push(['Barcode', 'Item Name', 'Supplier', 'Purchase Price', 'Current Inventory', 'Inventory Amount']);
-        currentItems.forEach(item => {
-          const supplier = useAltSupplier ? item.altSupplier : item.supplier1;
-          const price = useAltSupplier ? item.altPurchasePrice : item.purchasePrice;
-          const amount = item.currentInventory * price;
-          rows.push([`'${item.barcode}`, item.name, supplier, price, item.currentInventory, amount.toFixed(2)]);
+        allItems.forEach(item => {
+          const supplier = useAlt ? item.altSupplier : item.supplier1;
+          const price = useAlt ? item.altPurchasePrice : item.purchasePrice;
+          if (!supplier || !selectedSuppliers.includes(supplier)) return;
+          const invAmt = item.currentInventory * price;
+          rows.push([`'${item.barcode}`, item.name, supplier, price, item.currentInventory, invAmt.toFixed(2)]);
         });
       } else {
         rows.push(['Barcode', 'Item Name', 'Supplier', 'Current Inventory', 'Order Qty', 'Order Amount']);
-        currentItems.forEach(item => {
-          const supplier = useAltSupplier ? item.altSupplier : item.supplier1;
-          const price = useAltSupplier ? item.altPurchasePrice : item.purchasePrice;
+        allItems.forEach(item => {
+          const supplier = useAlt ? item.altSupplier : item.supplier1;
+          const price = useAlt ? item.altPurchasePrice : item.purchasePrice;
+          if (!supplier || !selectedSuppliers.includes(supplier)) return;
           if (item.orderQty > 0) {
             rows.push([`'${item.barcode}`, item.name, supplier, item.currentInventory, item.orderQty, (item.orderQty * price).toFixed(2)]);
           }
         });
       }
 
-      const csvContent = rows.map(e => e.join(',')).join('\n');
-      const blob = new Blob([csvContent], { type: 'text/csv' });
+      const csv = rows.map(row => row.join(',')).join('\n');
+      const blob = new Blob([csv], { type: 'text/csv' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
@@ -272,7 +240,7 @@
     window.onload = fetchData;
     window.onclick = e => {
       if (!e.target.closest('.dropdown')) {
-        document.querySelector('.dropdown').classList.remove('show');
+        document.querySelector('.dropdown')?.classList.remove('show');
       }
     };
   </script>
