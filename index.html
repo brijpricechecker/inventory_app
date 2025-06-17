@@ -253,81 +253,42 @@ if (data.suppliers && !isPO && data.suppliers.join() !== allSuppliers.join()) {
   }
 
   function exportToCSV() {
+
+  const rows = [['Date', 'Barcode', 'Item Name', '', 'Supplier', 'Purchase Price', 'Order Quantity', 'Total Order Amount']];
   const now = new Date();
-  const timestamp = `${now.getMonth() + 1}/${now.getDate()}/${now.getFullYear()} ${now.toLocaleTimeString('en-US', { hour12: false })}`;
+  const timestamp = ${now.getMonth() + 1}/${now.getDate()}/${now.getFullYear()} ${now.toLocaleTimeString('en-US', { hour12: false })};
 
-  let supplierLabel = selectedSuppliers.length === 1 ? selectedSuppliers[0] : 'Multiple';
-  let filename = `${isPO ? 'PO' : 'Inventory'}_${supplierLabel}_${new Date().toISOString().slice(0,10)}.csv`;
+  let supplierForFile = selectedSuppliers.length === 1 ? selectedSuppliers[0] : 'Multiple';
+  let filename = ${isPO ? 'PO' : 'Inventory'}_${supplierName}_${new Date().toISOString().slice(0,10)}.csv;
 
-  const rows = [];
-
-  if (isPO) {
-    // Header for PO mode
-    rows.push(['Date', 'Barcode', 'Item Name', '', 'Supplier', 'Purchase Price', 'Order Quantity', 'Total Order Amount']);
-
-    const trs = document.querySelectorAll('#tableContainer table tbody tr');
-    trs.forEach(tr => {
-      const tds = tr.querySelectorAll('td');
-      const qtyInput = tds[5].querySelector('input');
-      const qty = qtyInput ? parseInt(qtyInput.value) : 0;
-      if (qty > 0) {
-        const barcode = tds[0].textContent.trim();
-        const name = tds[1].textContent.trim();
-        const supplier = tds[2].textContent.trim();
-        const price = parseFloat(tds[3].textContent.trim()) || 0;
-        const total = qty * price;
-
-        rows.push([
-          timestamp,
-          `"${barcode}"`, // force Excel to treat it as text
-          name,
-          '',
-          supplier,
-          price.toFixed(2),
-          qty,
-          total.toFixed(2)
-        ]);
-      }
-    });
-  } else {
-    // Inventory mode header
-    const headers = ['Barcode', 'Item Name', 'Supplier', 'Purchase Price', 'Inventory', 'Value'];
-    rows.push(headers);
-
-    allItems.forEach(item => {
-      const supplier = useAlt ? item.supplier2 : item.supplier1;
-      const price = useAlt ? item.altPurchasePrice : item.purchasePrice;
-      const inv = item.currentInventory || 0;
-
+  document.querySelectorAll('#tableBody tr').forEach(row => {
+    const cells = row.querySelectorAll('td');
+    const qty = Number(cells[5].querySelector('input').value);
+    const price = parseFloat(cells[4].textContent.replace(/[^\d.]/g, '')) || 0;
+    const total = qty * price;
+    if (qty > 0) {
       rows.push([
-        `"${item.barcode}"`, // force as text
-        item.name,
-        supplier,
+        timestamp,
+        ="${cells[0].textContent}", // Keep barcode format
+        cells[1].textContent,
+        '',
+        cells[3].textContent,
         price.toFixed(2),
-        inv,
-        (inv * price).toFixed(2)
+        qty,
+        total.toFixed(2)
       ]);
-    });
-  }
+    }
+  });
 
-  const csvContent = rows.map(row => row.join(',')).join('\n');
+  const csvContent = rows.map(e => e.join(',')).join('\n');
   const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = filename;
+  link.setAttribute('href', URL.createObjectURL(blob));
+  link.setAttribute('download', filename);
   document.body.appendChild(link);
   link.click();
   document.body.removeChild(link);
 }
-
-
-
-
-
-
-
-
-
   window.onload = fetchData;
 </script>
 
