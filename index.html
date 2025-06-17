@@ -147,10 +147,15 @@
     allItems = data.items;
     inventoryData = isPO ? [] : data.items;
     
-    if (data.suppliers && !isPO) {
-      updateSupplierFilter(data.suppliers);
-    }
 
+
+if (data.suppliers && !isPO && data.suppliers.join() !== allSuppliers.join()) {
+  updateSupplierFilter(data.suppliers);
+}
+
+
+
+    
     renderTable();
   }
 
