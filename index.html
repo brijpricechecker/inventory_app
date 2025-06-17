@@ -1,274 +1,201 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <meta charset="UTF-8" />
-  <title>Inventory & PO</title>
+  <title>Inventory & Purchase Order</title>
+  <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
   <style>
-    body { font-family: Arial, sans-serif; padding: 10px; }
-    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
-    th, td { border: 1px solid #ccc; padding: 6px; text-align: left; }
-    th { background: #f0f0f0; cursor: pointer; }
-    .highlight { background-color: #ffffcc; }
-    .dropdown { position: relative; display: inline-block; }
-    .dropdown-content {
+    body {
+      font-family: Arial, sans-serif;
+      padding: 20px;
+    }
+    .filter-box, .actions {
+      margin-bottom: 10px;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 10px;
+    }
+    th, td {
+      padding: 8px;
+      border: 1px solid #ccc;
+      text-align: left;
+    }
+    .checkbox-dropdown {
+      position: relative;
+      display: inline-block;
+    }
+    .checkbox-menu {
       display: none;
       position: absolute;
       background: #fff;
       border: 1px solid #ccc;
       padding: 10px;
-      z-index: 99;
+      z-index: 1000;
       max-height: 200px;
       overflow-y: auto;
     }
-    .dropdown:hover .dropdown-content { display: block; }
-    .total-order {
-      font-weight: bold;
-      font-size: 1.1em;
-      text-align: right;
+    .checkbox-menu label {
+      display: block;
     }
-    button { margin-right: 8px; }
   </style>
 </head>
 <body>
-
-<div style="display: flex; justify-content: space-between; align-items: center;">
-  <div id="controls" style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
-    <button id="modeToggle">Switch to Purchase Order</button>
-    <button id="altToggle" style="display:none;">Use Alt Supplier</button>
-
-    <div class="dropdown">
-      <button>Filter Suppliers ▼</button>
-      <div class="dropdown-content" id="supplierFilter"></div>
+  <h2>Inventory & Purchase Order</h2>
+  <div class="filter-box">
+    <label>Supplier:</label>
+    <div class="checkbox-dropdown">
+      <button id="toggleSupplierDropdown">Select Supplier</button>
+      <div id="supplierDropdown" class="checkbox-menu"></div>
     </div>
-
-    <button id="downloadBtn">Export to CSV</button>
-    <button id="submitBtn" style="display:none;">Submit Order</button>
+    <button id="toggleAlt">Use Alt Supplier</button>
   </div>
-  <div id="totalOrder" class="total-order" style="display:none;"></div>
-</div>
+  <div class="actions">
+    <button id="submitOrders">Submit Orders</button>
+    <button id="downloadCSV">Download CSV</button>
+  </div>
+  <table id="inventoryTable">
+    <thead>
+      <tr>
+        <th>Barcode</th>
+        <th>Item Name</th>
+        <th>Supplier</th>
+        <th>Purchase Price</th>
+        <th>Total Sold</th>
+        <th>Current Inventory</th>
+        <th>Order Qty</th>
+        <th>Order Amount</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
 
-<div id="tableContainer"></div>
+  <script>
+    let inventoryData = [];
+    let selectedSuppliers = new Set();
+    let useAlt = false;
 
-<script>
-  const apiUrl = 'https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec'; // Replace with your script ID
-  let allItems = [];
-  let inventoryData = [];
-  let orderData = {};
-  let allSuppliers = [];
-  let selectedSuppliers = [];
-  let isPO = false;
-  let useAlt = false;
-  let currentSort = { column: '', asc: true };
-
-  document.getElementById('modeToggle').onclick = () => {
-    isPO = !isPO;
-    orderData = {};
-    document.getElementById('modeToggle').textContent = isPO ? 'Switch to Inventory' : 'Switch to Purchase Order';
-    document.getElementById('submitBtn').style.display = isPO ? '' : 'none';
-    document.getElementById('altToggle').style.display = isPO ? '' : 'none';
-    document.getElementById('totalOrder').style.display = isPO ? '' : 'none';
-    fetchData();
-  };
-
-  document.getElementById('altToggle').onclick = () => {
-    useAlt = !useAlt;
-    document.getElementById('altToggle').style.backgroundColor = useAlt ? '#d1eaff' : '';
-    renderTable();
-  };
-
-  document.getElementById('downloadBtn').onclick = exportToCSV;
-
-  document.getElementById('submitBtn').onclick = async () => {
-    const orders = Object.values(orderData);
-    if (orders.length === 0) return alert('No orders to submit.');
-    await fetch(apiUrl, {
-      method: 'POST',
-      body: JSON.stringify({ orders }),
-      headers: { 'Content-Type': 'application/json' }
-    });
-    alert('Orders submitted!');
-    orderData = {};
-    fetchData();
-  };
-
-  function updateSupplierFilter(suppliers) {
-    allSuppliers = suppliers;
-    const container = document.getElementById('supplierFilter');
-    container.innerHTML = '';
-
-    const selectAllId = 'chk_select_all';
-    const allDiv = document.createElement('div');
-    allDiv.innerHTML = `<label><input type="checkbox" id="${selectAllId}" checked /> Select All</label>`;
-    container.appendChild(allDiv);
-
-    suppliers.forEach(supplier => {
-      const id = 'chk_' + supplier.replace(/\s+/g, '_');
-      const div = document.createElement('div');
-      div.innerHTML = `<label><input type="checkbox" id="${id}" checked /> ${supplier}</label>`;
-      container.appendChild(div);
-    });
-
-    selectedSuppliers = [...suppliers];
-
-    const updateSelected = () => {
-      selectedSuppliers = suppliers.filter(s =>
-        document.getElementById('chk_' + s.replace(/\s+/g, '_')).checked
-      );
-      const allChecked = suppliers.every(s =>
-        document.getElementById('chk_' + s.replace(/\s+/g, '_')).checked
-      );
-      document.getElementById(selectAllId).checked = allChecked;
-      fetchData();
-    };
-
-    container.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
-      checkbox.onchange = () => {
-        if (checkbox.id === selectAllId) {
-          const check = checkbox.checked;
-          suppliers.forEach(s =>
-            document.getElementById('chk_' + s.replace(/\s+/g, '_')).checked = check
-          );
-        }
-        updateSelected();
-      };
-    });
-  }
-
-  async function fetchData() {
-    const suppliersParam = selectedSuppliers.map(s => encodeURIComponent(s)).join(',');
-    const mode = isPO ? 'po' : 'inventory';
-    const res = await fetch(`${apiUrl}?mode=${mode}&suppliers=${suppliersParam}`);
-    const data = await res.json();
-    allItems = data.items;
-    inventoryData = isPO ? [] : data.items; // backup for CSV
-    if (data.suppliers && !isPO) updateSupplierFilter(data.suppliers);
-    renderTable();
-  }
-
-  function toggleSort(column) {
-    if (currentSort.column === column) {
-      currentSort.asc = !currentSort.asc;
-    } else {
-      currentSort.column = column;
-      currentSort.asc = true;
-    }
-    renderTable();
-  }
-
-  function renderTable() {
-    const container = document.getElementById('tableContainer');
-    if (allItems.length === 0) {
-      container.innerHTML = '<p>No data found.</p>';
-      return;
-    }
-
-    const sortedItems = [...allItems];
-    if (currentSort.column === 'inventory') {
-      sortedItems.sort((a, b) => {
-        const valA = a.currentInventory || 0;
-        const valB = b.currentInventory || 0;
-        return currentSort.asc ? valA - valB : valB - valA;
+    function fetchInventory() {
+      $.getJSON("https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec", data => {
+        inventoryData = data.items;
+        populateSupplierFilter(data.suppliers);
+        renderTable();
       });
     }
 
-    let html = `<table><thead><tr>
-      <th>Barcode</th><th>Item Name</th><th>Supplier</th><th>Purchase Price</th>`;
-
-    if (isPO) {
-      html += `<th onclick="toggleSort('inventory')">Current Inventory &#x21C5;</th><th>Order Qty</th><th>Order Amount</th>`;
-    } else {
-      html += `<th onclick="toggleSort('inventory')">Inventory &#x21C5;</th><th>Value</th>`;
+    function populateSupplierFilter(suppliers) {
+      const dropdown = $("#supplierDropdown").empty();
+      dropdown.append(`<label><input type="checkbox" value="__all__" checked> Select All</label>`);
+      suppliers.forEach(s => {
+        dropdown.append(`<label><input type="checkbox" value="${s}" checked> ${s}</label>`);
+        selectedSuppliers.add(s);
+      });
     }
 
-    html += `</tr></thead><tbody>`;
+    function renderTable() {
+      const tbody = $("#inventoryTable tbody").empty();
+      inventoryData.forEach(item => {
+        const supplierKey = useAlt ? item.altSupplier : item.supplier1;
+        const price = useAlt ? item.altPurchasePrice : item.purchasePrice;
+        if (!selectedSuppliers.has(item.supplier1)) return;
 
-    sortedItems.forEach(item => {
-      const supplier = useAlt ? item.supplier2 : item.supplier1;
-      const price = useAlt ? item.altPurchasePrice : item.purchasePrice;
-      const inv = item.currentInventory || 0;
-      const ordered = orderData[item.barcode];
+        const row = $(`
+          <tr>
+            <td>${item.barcode}</td>
+            <td>${item.name}</td>
+            <td>${supplierKey || ""}</td>
+            <td class="price">${price}</td>
+            <td>${item.totalSold}</td>
+            <td>${item.currentInventory}</td>
+            <td><input type="number" min="0" class="orderQty" style="width: 60px"></td>
+            <td class="orderAmt">0</td>
+          </tr>
+        `);
+        row.find(".orderQty").on("input", function() {
+          const qty = Number($(this).val()) || 0;
+          const amt = qty * price;
+          row.find(".orderAmt").text(amt.toFixed(2));
+        });
+        tbody.append(row);
+      });
+    }
 
-      let row = `<tr${isPO && ordered ? ' class="highlight"' : ''}>`;
-      row += `<td>${item.barcode}</td>`;
-      row += `<td>${item.name}</td>`;
-      row += `<td>${supplier}</td>`;
-      row += `<td>${price.toFixed(2)}</td>`;
-
-      if (isPO) {
-        const qty = ordered?.qty || '';
-        const amt = qty ? (qty * price).toFixed(2) : '';
-        row += `<td>${inv}</td>`;
-        row += `<td><input type="number" min="0" step="1" value="${qty}"
-          oninput="captureQty('${item.barcode}', this.value, ${price}, '${supplier}', '${item.name}')"
-          onfocus="this.select()" onkeydown="event.stopPropagation();"></td>`;
-        row += `<td>${amt}</td>`;
+    $(document).on("change", "#supplierDropdown input", function() {
+      const val = $(this).val();
+      if (val === "__all__") {
+        const checked = $(this).prop("checked");
+        $("#supplierDropdown input[type=checkbox]").prop("checked", checked);
+        selectedSuppliers = new Set(checked ? inventoryData.map(i => i.supplier1) : []);
       } else {
-        row += `<td>${inv}</td>`;
-        row += `<td>${(inv * price).toFixed(2)}</td>`;
-      }
+        const checked = $(this).prop("checked");
+        if (checked) selectedSuppliers.add(val);
+        else selectedSuppliers.delete(val);
 
-      row += `</tr>`;
-      html += row;
+        // Update Select All
+        const allChecked = $("#supplierDropdown input[type=checkbox]").not("[value='__all__']").length === selectedSuppliers.size;
+        $("#supplierDropdown input[value='__all__']").prop("checked", allChecked);
+      }
+      renderTable();
+      $("#supplierDropdown").hide();
     });
 
-    html += `</tbody></table>`;
-    container.innerHTML = html;
-    updateTotal();
-  }
+    $("#toggleSupplierDropdown").on("click", () => {
+      $("#supplierDropdown").toggle();
+    });
 
-  function captureQty(barcode, qty, price, supplier, name) {
-    qty = parseInt(qty);
-    if (isNaN(qty) || qty <= 0) {
-      delete orderData[barcode];
-    } else {
-      orderData[barcode] = {
-        barcode,
-        item: name,
-        supplier,
-        qty,
-        price,
-        amount: qty * price
-      };
-    }
-    renderTable();
-  }
+    $("#toggleAlt").on("click", () => {
+      useAlt = !useAlt;
+      $("#toggleAlt").text(useAlt ? "Using Alt Supplier" : "Use Alt Supplier");
+      renderTable();
+    });
 
-  function updateTotal() {
-    const total = Object.values(orderData).reduce((sum, o) => sum + o.amount, 0);
-    document.getElementById('totalOrder').textContent = `Total Order Amount: ₱${total.toFixed(2)}`;
-  }
-
-  function exportToCSV() {
-    const rows = [['Barcode', 'Item Name', 'Supplier', 'Inventory', 'Price', 'Value']];
-    if (!isPO) {
-      inventoryData.forEach(i => {
-        const supplier = useAlt ? i.supplier2 : i.supplier1;
-        const price = useAlt ? i.altPurchasePrice : i.purchasePrice;
-        const inv = i.currentInventory || 0;
-        rows.push([i.barcode, i.name, supplier, inv, price, (inv * price).toFixed(2)]);
+    $("#submitOrders").on("click", () => {
+      const orders = [];
+      $("#inventoryTable tbody tr").each(function() {
+        const qty = Number($(this).find(".orderQty").val());
+        if (!qty) return;
+        orders.push({
+          barcode: $(this).find("td:eq(0)").text(),
+          name: $(this).find("td:eq(1)").text(),
+          supplier: $(this).find("td:eq(2)").text(),
+          qty,
+          amount: Number($(this).find(".orderAmt").text())
+        });
       });
-    } else {
-      const orderRows = Object.values(orderData);
-      if (orderRows.length === 0) return alert('No orders to export.');
-      rows.length = 0; // reset for PO
-      rows.push(['Barcode', 'Item Name', 'Supplier', 'Qty', 'Price', 'Amount']);
-      orderRows.forEach(o => {
-        rows.push([o.barcode, o.item, o.supplier, o.qty, o.price, o.amount]);
+      if (orders.length === 0) return alert("No orders to submit");
+      $.ajax({
+        url: "https://script.google.com/macros/s/YOUR_DEPLOYED_URL/exec",
+        method: "POST",
+        contentType: "application/json",
+        data: JSON.stringify({ orders }),
+        success: () => alert("Orders submitted successfully")
       });
-    }
+    });
 
-    const csv = rows.map(r => r.join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const a = document.createElement('a');
-    const supplierName = selectedSuppliers.length === 1 ? selectedSuppliers[0] : 'multiple';
-    const filename = `${isPO ? 'PO' : 'Inventory'}_${supplierName}_${new Date().toISOString().slice(0,10)}.csv`;
-    a.href = URL.createObjectURL(blob);
-    a.download = filename;
-    a.click();
-  }
+    $("#downloadCSV").on("click", () => {
+      let csv = "Barcode,Item Name,Supplier,Qty,Amount\n";
+      let supplierName = "PO";
+      $("#inventoryTable tbody tr").each(function() {
+        const qty = Number($(this).find(".orderQty").val());
+        if (!qty) return;
+        const barcode = $(this).find("td:eq(0)").text();
+        const name = $(this).find("td:eq(1)").text();
+        const supplier = $(this).find("td:eq(2)").text();
+        const amount = $(this).find(".orderAmt").text();
+        supplierName = supplier || supplierName;
+        csv += `${barcode},${name},${supplier},${qty},${amount}\n`;
+      });
+      const blob = new Blob([csv], { type: "text/csv" });
+      const ts = new Date().toISOString().replace(/[:.-]/g, "").slice(0, 15);
+      const link = document.createElement("a");
+      link.href = URL.createObjectURL(blob);
+      link.download = `PO_${supplierName}_${ts}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    });
 
-  window.onload = fetchData;
-</script>
-
+    fetchInventory();
+  </script>
 </body>
 </html>
