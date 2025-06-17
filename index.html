@@ -248,38 +248,49 @@
   }
 
   function exportToCSV() {
-  const rows = document.querySelectorAll('#itemTableBody tr');
+
+  const rows = [['Date', 'Barcode', 'Item Name', '', 'Supplier', 'Purchase Price', 'Order Quantity', 'Total Order Amount']];
   const now = new Date();
-  const timestamp = now.toLocaleString();
-  let csv = `Timestamp,Barcode,Item Name,Supplier,,Order Qty,Order Amount\n`;
+  const timestamp = `${now.getMonth() + 1}/${now.getDate()}/${now.getFullYear()} ${now.toLocaleTimeString('en-US', { hour12: false })}`;
 
-  rows.forEach(row => {
-    const qty = Number(row.querySelector('.qty').value);
+  let supplierForFile = selectedSuppliers.length === 1 ? selectedSuppliers[0] : 'Multiple';
+  let filename = `${isPO ? 'PO' : 'Inventory'}_${supplierName}_${new Date().toISOString().slice(0,10)}.csv`;
+
+  document.querySelectorAll('#tableBody tr').forEach(row => {
+    const cells = row.querySelectorAll('td');
+    const qty = Number(cells[5].querySelector('input').value);
+    const price = parseFloat(cells[4].textContent.replace(/[^\d.]/g, '')) || 0;
+    const total = qty * price;
     if (qty > 0) {
-      const barcode = row.cells[0].textContent;
-      const name = row.cells[1].textContent;
-      const supplier = row.cells[2].textContent;
-      const amount = row.querySelector('.amount').textContent.replace('PHP ', '');
-      
-      // Prevent barcode formatting issues by wrapping in ="123456789012"
-      const safeBarcode = `="${barcode}"`;
-
-      csv += `${timestamp},${safeBarcode},${name},${supplier},,${qty},PHP ${amount}\n`;
+      rows.push([
+        timestamp,
+        `="${cells[0].textContent}"`, // Keep barcode format
+        cells[1].textContent,
+        '',
+        cells[3].textContent,
+        price.toFixed(2),
+        qty,
+        total.toFixed(2)
+      ]);
     }
   });
 
-  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-  const supplierName = document.getElementById('supplierToggle').textContent.includes('Alt') ? 'AltSupplier' : 'MainSupplier';
-
-
-
-    
-  const filename = `${isPO ? 'PO' : 'Inventory'}_${supplierName}_${new Date().toISOString().slice(0,10)}.csv`;
+  const csvContent = rows.map(e => e.join(',')).join('\n');
+  const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
   const link = document.createElement('a');
-  link.href = URL.createObjectURL(blob);
-  link.download = filename;
+  link.setAttribute('href', URL.createObjectURL(blob));
+  link.setAttribute('download', filename);
+  document.body.appendChild(link);
   link.click();
-  }
+  document.body.removeChild(link);
+}
+
+
+
+
+
+
+
 
   window.onload = fetchData;
 </script>
