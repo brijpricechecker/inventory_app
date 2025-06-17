@@ -274,10 +274,11 @@
 
 
     
-    const filename = `${isPO ? 'PO' : 'Inventory'}_${supplierName}_${new Date().toISOString().slice(0,10)}.csv`;
-    a.href = URL.createObjectURL(blob);
-    a.download = filename;
-    a.click();
+  const filename = `${isPO ? 'PO' : 'Inventory'}_${supplierName}_${new Date().toISOString().slice(0,10)}.csv`;
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(blob);
+  link.download = filename;
+  link.click();
   }
 
   window.onload = fetchData;
