@@ -50,8 +50,9 @@
 <div id="tableContainer"></div>
 
 <script>
-  const apiUrl = 'https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec'; // Replace if needed
+  const apiUrl = 'https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec'; // Replace with your script ID
   let allItems = [];
+  let inventoryData = [];
   let orderData = {};
   let allSuppliers = [];
   let selectedSuppliers = [];
@@ -139,7 +140,8 @@
     const res = await fetch(`${apiUrl}?mode=${mode}&suppliers=${suppliersParam}`);
     const data = await res.json();
     allItems = data.items;
-    if (data.suppliers) updateSupplierFilter(data.suppliers);
+    inventoryData = isPO ? [] : data.items; // backup for CSV
+    if (data.suppliers && !isPO) updateSupplierFilter(data.suppliers);
     renderTable();
   }
 
@@ -237,16 +239,29 @@
   }
 
   function exportToCSV() {
-    const rows = [['Barcode', 'Item Name', 'Supplier', 'Qty', 'Price', 'Amount']];
-    Object.values(orderData).forEach(o => {
-      rows.push([o.barcode, o.item, o.supplier, o.qty, o.price, o.amount]);
-    });
+    const rows = [['Barcode', 'Item Name', 'Supplier', 'Inventory', 'Price', 'Value']];
+    if (!isPO) {
+      inventoryData.forEach(i => {
+        const supplier = useAlt ? i.supplier2 : i.supplier1;
+        const price = useAlt ? i.altPurchasePrice : i.purchasePrice;
+        const inv = i.currentInventory || 0;
+        rows.push([i.barcode, i.name, supplier, inv, price, (inv * price).toFixed(2)]);
+      });
+    } else {
+      const orderRows = Object.values(orderData);
+      if (orderRows.length === 0) return alert('No orders to export.');
+      rows.length = 0; // reset for PO
+      rows.push(['Barcode', 'Item Name', 'Supplier', 'Qty', 'Price', 'Amount']);
+      orderRows.forEach(o => {
+        rows.push([o.barcode, o.item, o.supplier, o.qty, o.price, o.amount]);
+      });
+    }
 
     const csv = rows.map(r => r.join(',')).join('\n');
     const blob = new Blob([csv], { type: 'text/csv' });
     const a = document.createElement('a');
     const supplierName = selectedSuppliers.length === 1 ? selectedSuppliers[0] : 'multiple';
-    const filename = `PO_${supplierName}_${new Date().toISOString().slice(0,10)}.csv`;
+    const filename = `${isPO ? 'PO' : 'Inventory'}_${supplierName}_${new Date().toISOString().slice(0,10)}.csv`;
     a.href = URL.createObjectURL(blob);
     a.download = filename;
     a.click();
