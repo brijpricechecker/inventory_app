@@ -248,28 +248,32 @@
   }
 
   function exportToCSV() {
-    const rows = [];
-    if (!isPO) {
-      rows.push(['Barcode', 'Item Name', 'Supplier', 'Inventory', 'Price', 'Value']);
-      inventoryData.forEach(i => {
-        const supplier = useAlt ? i.supplier2 : i.supplier1;
-        const price = useAlt ? i.altPurchasePrice : i.purchasePrice;
-        const inv = i.currentInventory || 0;
-        rows.push([i.barcode, i.name, supplier, inv, price, (inv * price).toFixed(2)]);
-      });
-    } else {
-      const orderRows = Object.values(orderData);
-      if (orderRows.length === 0) return alert('No orders to export.');
-      rows.push(['Barcode', 'Item Name', 'Supplier', 'Qty', 'Price', 'Amount']);
-      orderRows.forEach(o => {
-        rows.push([o.barcode, o.item, o.supplier, o.qty, o.price, o.amount]);
-      });
-    }
+  const rows = document.querySelectorAll('#itemTableBody tr');
+  const now = new Date();
+  const timestamp = now.toLocaleString();
+  let csv = `Timestamp,Barcode,Item Name,Supplier,,Order Qty,Order Amount\n`;
 
-    const csv = rows.map(r => r.join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
-    const a = document.createElement('a');
-    const supplierName = selectedSuppliers.length === 1 ? selectedSuppliers[0] : 'multiple';
+  rows.forEach(row => {
+    const qty = Number(row.querySelector('.qty').value);
+    if (qty > 0) {
+      const barcode = row.cells[0].textContent;
+      const name = row.cells[1].textContent;
+      const supplier = row.cells[2].textContent;
+      const amount = row.querySelector('.amount').textContent.replace('PHP ', '');
+      
+      // Prevent barcode formatting issues by wrapping in ="123456789012"
+      const safeBarcode = `="${barcode}"`;
+
+      csv += `${timestamp},${safeBarcode},${name},${supplier},,${qty},PHP ${amount}\n`;
+    }
+  });
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const supplierName = document.getElementById('supplierToggle').textContent.includes('Alt') ? 'AltSupplier' : 'MainSupplier';
+
+
+
+    
     const filename = `${isPO ? 'PO' : 'Inventory'}_${supplierName}_${new Date().toISOString().slice(0,10)}.csv`;
     a.href = URL.createObjectURL(blob);
     a.download = filename;
