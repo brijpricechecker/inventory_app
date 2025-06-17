@@ -1,117 +1,283 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Inventory & Purchase Dashboard</title>
+  <meta charset="UTF-8" />
+  <title>Inventory & PO</title>
   <style>
-    table {
-      border-collapse: collapse;
-      width: 100%;
-    }
-    th, td {
+    body { font-family: Arial, sans-serif; padding: 10px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border: 1px solid #ccc; padding: 6px; text-align: left; }
+    th { background: #f0f0f0; cursor: pointer; }
+    .highlight { background-color: #ffffcc; }
+    .dropdown { position: relative; display: inline-block; }
+    .dropdown-content {
+      display: none;
+      position: absolute;
+      background: #fff;
       border: 1px solid #ccc;
-      padding: 8px;
-      text-align: left;
+      padding: 10px;
+      z-index: 99;
+      max-height: 200px;
+      overflow-y: auto;
     }
-    .highlight-zero {
-      background-color: #ffe5e5; /* light red for 0 inventory */
+    .dropdown:hover .dropdown-content { display: block; }
+    .total-order {
+      font-weight: bold;
+      font-size: 1.1em;
+      text-align: right;
     }
-    button {
-      margin: 10px 0;
-      padding: 6px 12px;
-    }
+    button { margin-right: 8px; }
   </style>
 </head>
 <body>
-  <h1>Dashboard</h1>
-  <div>
-    Mode:
-    <select id="modeSelect">
-      <option value="inventory">Inventory</option>
-      <option value="po">Purchase Order</option>
-    </select>
-    <button onclick="loadData()">Load</button>
-    <button onclick="downloadCSV()">Download CSV</button>
+
+<div style="display: flex; justify-content: space-between; align-items: center;">
+  <div id="controls" style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+    <button id="modeToggle">Switch to Purchase Order</button>
+    <button id="altToggle" style="display:none;">Use Alt Supplier</button>
+
+    <div class="dropdown">
+      <button>Filter Suppliers ▼</button>
+      <div class="dropdown-content" id="supplierFilter"></div>
+    </div>
+
+    <button id="downloadBtn">Export to CSV</button>
+    <button id="submitBtn" style="display:none;">Submit Order</button>
   </div>
-  <div id="tableContainer"></div>
+  <div id="totalOrder" class="total-order" style="display:none;"></div>
+</div>
 
-  <script>
-    let currentData = [];
-    let currentMode = 'inventory';
+<div id="tableContainer"></div>
 
-    function loadData() {
-      currentMode = document.getElementById("modeSelect").value;
+<script>
+  const apiUrl = 'https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec';
+  let allItems = [];
+  let inventoryData = [];
+  let orderData = {};
+  let allSuppliers = [];
+  let selectedSuppliers = [];
+  let isPO = false;
+  let useAlt = false;
+  let currentSort = { column: '', asc: true };
 
-      fetch(`https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec?mode=${currentMode}`)
-        .then(res => res.json())
-        .then(data => {
-          currentData = data.items || [];
-          renderTable(currentData);
-        });
+  document.getElementById('modeToggle').onclick = () => {
+    isPO = !isPO;
+    orderData = {};
+    document.getElementById('modeToggle').textContent = isPO ? 'Switch to Inventory' : 'Switch to Purchase Order';
+    document.getElementById('submitBtn').style.display = isPO ? '' : 'none';
+    document.getElementById('altToggle').style.display = isPO ? '' : 'none';
+    document.getElementById('totalOrder').style.display = isPO ? '' : 'none';
+    fetchData();
+  };
+
+  document.getElementById('altToggle').onclick = () => {
+    useAlt = !useAlt;
+    document.getElementById('altToggle').style.backgroundColor = useAlt ? '#d1eaff' : '';
+    renderTable();
+  };
+
+  document.getElementById('downloadBtn').onclick = exportToCSV;
+
+  document.getElementById('submitBtn').onclick = async () => {
+    const orders = Object.values(orderData);
+    if (orders.length === 0) return alert('No orders to submit.');
+    await fetch(apiUrl, {
+      method: 'POST',
+      body: JSON.stringify({ orders }),
+      headers: { 'Content-Type': 'application/json' }
+    });
+    alert('Orders submitted!');
+    orderData = {};
+    fetchData();
+  };
+
+  function updateSupplierFilter(suppliers) {
+    allSuppliers = suppliers;
+    const container = document.getElementById('supplierFilter');
+    container.innerHTML = '';
+
+    const selectAllId = 'chk_select_all';
+    const allDiv = document.createElement('div');
+    allDiv.innerHTML = <label><input type="checkbox" id="${selectAllId}" checked /> Select All</label>;
+    container.appendChild(allDiv);
+
+    suppliers.forEach(supplier => {
+      const id = 'chk_' + supplier.replace(/\s+/g, '_');
+      const div = document.createElement('div');
+      div.innerHTML = <label><input type="checkbox" id="${id}" checked /> ${supplier}</label>;
+      container.appendChild(div);
+    });
+
+    selectedSuppliers = [...suppliers]; // initially select all
+
+    const updateSelected = () => {
+      selectedSuppliers = suppliers.filter(s =>
+        document.getElementById('chk_' + s.replace(/\s+/g, '_')).checked
+      );
+      const allChecked = suppliers.every(s =>
+        document.getElementById('chk_' + s.replace(/\s+/g, '_')).checked
+      );
+      document.getElementById(selectAllId).checked = allChecked;
+      fetchData();
+    };
+
+    container.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+      checkbox.onchange = () => {
+        if (checkbox.id === selectAllId) {
+          const check = checkbox.checked;
+          suppliers.forEach(s =>
+            document.getElementById('chk_' + s.replace(/\s+/g, '_')).checked = check
+          );
+        }
+        updateSelected();
+      };
+    });
+  }
+
+  async function fetchData() {
+    // Use fallback if not yet selected
+    if (!selectedSuppliers.length && allSuppliers.length) {
+      selectedSuppliers = [...allSuppliers];
     }
 
-    function renderTable(data) {
-      const container = document.getElementById("tableContainer");
-      if (!data.length) return (container.innerHTML = "<p>No data found.</p>");
+    const suppliersParam = selectedSuppliers.map(s => encodeURIComponent(s)).join(',');
+    const mode = isPO ? 'po' : 'inventory';
+    const res = await fetch(${apiUrl}?mode=${mode}&suppliers=${suppliersParam});
+    const data = await res.json();
+    allItems = data.items;
+    inventoryData = isPO ? [] : data.items;
+    
+    if (data.suppliers && !isPO) {
+      updateSupplierFilter(data.suppliers);
+    }
 
-      let html = "<table><thead><tr>";
-      const headers = Object.keys(data[0]);
-      headers.forEach(h => html += `<th>${h}</th>`);
-      html += "</tr></thead><tbody>";
+    renderTable();
+  }
 
-      data.forEach(row => {
-        const rowClass = row.highlight ? ' class="highlight-zero"' : '';
-        html += `<tr${rowClass}>`;
-        headers.forEach(h => html += `<td>${row[h]}</td>`);
-        html += "</tr>";
+  function toggleSort(column) {
+    if (currentSort.column === column) {
+      currentSort.asc = !currentSort.asc;
+    } else {
+      currentSort.column = column;
+      currentSort.asc = true;
+    }
+    renderTable();
+  }
+
+  function renderTable() {
+    const container = document.getElementById('tableContainer');
+    if (allItems.length === 0) {
+      container.innerHTML = '<p>No data found.</p>';
+      return;
+    }
+
+    const sortedItems = [...allItems];
+    if (currentSort.column === 'inventory') {
+      sortedItems.sort((a, b) => {
+        const valA = a.currentInventory || 0;
+        const valB = b.currentInventory || 0;
+        return currentSort.asc ? valA - valB : valB - valA;
       });
-
-      html += "</tbody></table>";
-      container.innerHTML = html;
     }
 
-    function downloadCSV() {
-      if (!currentData.length) return alert("No data to download.");
+    let html = <table><thead><tr>
+      <th>Barcode</th><th>Item Name</th><th>Supplier</th><th>Purchase Price</th>;
 
-      let csvContent = '';
-      const now = new Date().toLocaleString();
+    if (isPO) {
+      html += <th onclick="toggleSort('inventory')">Current Inventory &#x21C5;</th><th>Order Qty</th><th>Order Amount</th>;
+    } else {
+      html += <th onclick="toggleSort('inventory')">Inventory &#x21C5;</th><th>Value</th>;
+    }
 
-      if (currentMode === 'po') {
-        csvContent += "Timestamp,Barcode,Item Name,,Supplier,Purchase Price,Ordered Qty,Ordered Amount\n";
-        currentData.forEach(row => {
-          csvContent += [
-            now,
-            `'${row.barcode}`, // barcode as text
-            row.name,
-            '',
-            row.supplier,
-            row.purchasePrice || 0,
-            row.qty,
-            row.amount
-          ].join(",") + "\n";
-        });
+    html += </tr></thead><tbody>;
+
+    sortedItems.forEach(item => {
+      const supplier = useAlt ? item.supplier2 : item.supplier1;
+      const price = useAlt ? item.altPurchasePrice : item.purchasePrice;
+      const inv = item.currentInventory || 0;
+      const ordered = orderData[item.barcode];
+
+      let row = <tr${isPO && ordered ? ' class="highlight"' : ''}>;
+      row += <td>${item.barcode}</td>;
+      row += <td>${item.name}</td>;
+      row += <td>${supplier}</td>;
+      row += <td>${price.toFixed(2)}</td>;
+
+      if (isPO) {
+        const qty = ordered?.qty || '';
+        const amt = qty ? (qty * price).toFixed(2) : '';
+        row += <td>${inv}</td>;
+        row += <td><input type="number" min="0" step="1" value="${qty}"
+          oninput="captureQty('${item.barcode}', this.value, ${price}, '${supplier}', '${item.name}')"
+          onfocus="this.select()" onkeydown="event.stopPropagation();"></td>;
+        row += <td>${amt}</td>;
       } else {
-        // Inventory mode – export full data
-        const headers = Object.keys(currentData[0]);
-        csvContent += headers.join(",") + "\n";
-        currentData.forEach(row => {
-          csvContent += headers.map(h => {
-            if (h.toLowerCase() === 'barcode') return `'${row[h]}`;
-            return row[h];
-          }).join(",") + "\n";
-        });
+        row += <td>${inv}</td>;
+        row += <td>${(inv * price).toFixed(2)}</td>;
       }
 
-      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-      const link = document.createElement("a");
-      link.href = URL.createObjectURL(blob);
-      link.download = `${currentMode}_data_${new Date().toISOString().slice(0,10)}.csv`;
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
+      row += </tr>;
+      html += row;
+    });
+
+    html += </tbody></table>;
+    container.innerHTML = html;
+    updateTotal();
+  }
+
+  function captureQty(barcode, qty, price, supplier, name) {
+    qty = parseInt(qty);
+    if (isNaN(qty) || qty <= 0) {
+      delete orderData[barcode];
+    } else {
+      orderData[barcode] = {
+        barcode,
+        item: name,
+        supplier,
+        qty,
+        price,
+        amount: qty * price
+      };
+    }
+    renderTable();
+  }
+
+  function updateTotal() {
+    const total = Object.values(orderData).reduce((sum, o) => sum + o.amount, 0);
+    document.getElementById('totalOrder').textContent = Total Order Amount: ₱${total.toFixed(2)};
+  }
+
+  function exportToCSV() {
+    const rows = [];
+    if (!isPO) {
+      rows.push(['Barcode', 'Item Name', 'Supplier', 'Inventory', 'Price', 'Value']);
+      inventoryData.forEach(i => {
+        const supplier = useAlt ? i.supplier2 : i.supplier1;
+        const price = useAlt ? i.altPurchasePrice : i.purchasePrice;
+        const inv = i.currentInventory || 0;
+        rows.push([i.barcode, i.name, supplier, inv, price, (inv * price).toFixed(2)]);
+      });
+    } else {
+      const orderRows = Object.values(orderData);
+      if (orderRows.length === 0) return alert('No orders to export.');
+      rows.push(['Barcode', 'Item Name', 'Supplier', 'Qty', 'Price', 'Amount']);
+      orderRows.forEach(o => {
+        rows.push([o.barcode, o.item, o.supplier, o.qty, o.price, o.amount]);
+      });
     }
 
-    // Auto-load on page load
-    window.onload = loadData;
-  </script>
+    const csv = rows.map(r => r.join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const a = document.createElement('a');
+    const supplierName = selectedSuppliers.length === 1 ? selectedSuppliers[0] : 'multiple';
+    const filename = ${isPO ? 'PO' : 'Inventory'}_${supplierName}_${new Date().toISOString().slice(0,10)}.csv;
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+  }
+
+  window.onload = fetchData;
+</script>
+
 </body>
 </html>
