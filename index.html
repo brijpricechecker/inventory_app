@@ -50,7 +50,7 @@
 <div id="tableContainer"></div>
 
 <script>
-  const apiUrl = 'https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec'; // Replace with your script ID
+  const apiUrl = 'https://script.google.com/macros/s/AKfycbwA2KDBI3mwXx8mn6n5ICO5tVAexOCRxHGr2IwXnWwvifmHY6-lhX4wB-6NDsQ_ppg/exec';
   let allItems = [];
   let inventoryData = [];
   let orderData = {};
@@ -108,7 +108,7 @@
       container.appendChild(div);
     });
 
-    selectedSuppliers = [...suppliers];
+    selectedSuppliers = [...suppliers]; // initially select all
 
     const updateSelected = () => {
       selectedSuppliers = suppliers.filter(s =>
@@ -135,13 +135,22 @@
   }
 
   async function fetchData() {
+    // Use fallback if not yet selected
+    if (!selectedSuppliers.length && allSuppliers.length) {
+      selectedSuppliers = [...allSuppliers];
+    }
+
     const suppliersParam = selectedSuppliers.map(s => encodeURIComponent(s)).join(',');
     const mode = isPO ? 'po' : 'inventory';
     const res = await fetch(`${apiUrl}?mode=${mode}&suppliers=${suppliersParam}`);
     const data = await res.json();
     allItems = data.items;
-    inventoryData = isPO ? [] : data.items; // backup for CSV
-    if (data.suppliers && !isPO) updateSupplierFilter(data.suppliers);
+    inventoryData = isPO ? [] : data.items;
+    
+    if (data.suppliers && !isPO) {
+      updateSupplierFilter(data.suppliers);
+    }
+
     renderTable();
   }
 
@@ -239,8 +248,9 @@
   }
 
   function exportToCSV() {
-    const rows = [['Barcode', 'Item Name', 'Supplier', 'Inventory', 'Price', 'Value']];
+    const rows = [];
     if (!isPO) {
+      rows.push(['Barcode', 'Item Name', 'Supplier', 'Inventory', 'Price', 'Value']);
       inventoryData.forEach(i => {
         const supplier = useAlt ? i.supplier2 : i.supplier1;
         const price = useAlt ? i.altPurchasePrice : i.purchasePrice;
@@ -250,7 +260,6 @@
     } else {
       const orderRows = Object.values(orderData);
       if (orderRows.length === 0) return alert('No orders to export.');
-      rows.length = 0; // reset for PO
       rows.push(['Barcode', 'Item Name', 'Supplier', 'Qty', 'Price', 'Amount']);
       orderRows.forEach(o => {
         rows.push([o.barcode, o.item, o.supplier, o.qty, o.price, o.amount]);
