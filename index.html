@@ -98,13 +98,13 @@
 
     const selectAllId = 'chk_select_all';
     const allDiv = document.createElement('div');
-    allDiv.innerHTML = <label><input type="checkbox" id="${selectAllId}" checked /> Select All</label>;
+    allDiv.innerHTML = `<label><input type="checkbox" id="${selectAllId}" checked /> Select All</label>`;
     container.appendChild(allDiv);
 
     suppliers.forEach(supplier => {
       const id = 'chk_' + supplier.replace(/\s+/g, '_');
       const div = document.createElement('div');
-      div.innerHTML = <label><input type="checkbox" id="${id}" checked /> ${supplier}</label>;
+      div.innerHTML = `<label><input type="checkbox" id="${id}" checked /> ${supplier}</label>`;
       container.appendChild(div);
     });
 
@@ -142,7 +142,7 @@
 
     const suppliersParam = selectedSuppliers.map(s => encodeURIComponent(s)).join(',');
     const mode = isPO ? 'po' : 'inventory';
-    const res = await fetch(${apiUrl}?mode=${mode}&suppliers=${suppliersParam});
+    const res = await fetch(`${apiUrl}?mode=${mode}&suppliers=${suppliersParam}`);
     const data = await res.json();
     allItems = data.items;
     inventoryData = isPO ? [] : data.items;
@@ -180,16 +180,16 @@
       });
     }
 
-    let html = <table><thead><tr>
-      <th>Barcode</th><th>Item Name</th><th>Supplier</th><th>Purchase Price</th>;
+    let html = `<table><thead><tr>
+      <th>Barcode</th><th>Item Name</th><th>Supplier</th><th>Purchase Price</th>`;
 
     if (isPO) {
-      html += <th onclick="toggleSort('inventory')">Current Inventory &#x21C5;</th><th>Order Qty</th><th>Order Amount</th>;
+      html += `<th onclick="toggleSort('inventory')">Current Inventory &#x21C5;</th><th>Order Qty</th><th>Order Amount</th>`;
     } else {
-      html += <th onclick="toggleSort('inventory')">Inventory &#x21C5;</th><th>Value</th>;
+      html += `<th onclick="toggleSort('inventory')">Inventory &#x21C5;</th><th>Value</th>`;
     }
 
-    html += </tr></thead><tbody>;
+    html += `</tr></thead><tbody>`;
 
     sortedItems.forEach(item => {
       const supplier = useAlt ? item.supplier2 : item.supplier1;
@@ -197,30 +197,30 @@
       const inv = item.currentInventory || 0;
       const ordered = orderData[item.barcode];
 
-      let row = <tr${isPO && ordered ? ' class="highlight"' : ''}>;
-      row += <td>${item.barcode}</td>;
-      row += <td>${item.name}</td>;
-      row += <td>${supplier}</td>;
-      row += <td>${price.toFixed(2)}</td>;
+      let row = `<tr${isPO && ordered ? ' class="highlight"' : ''}>`;
+      row += `<td>${item.barcode}</td>`;
+      row += `<td>${item.name}</td>`;
+      row += `<td>${supplier}</td>`;
+      row += `<td>${price.toFixed(2)}</td>`;
 
       if (isPO) {
         const qty = ordered?.qty || '';
         const amt = qty ? (qty * price).toFixed(2) : '';
-        row += <td>${inv}</td>;
-        row += <td><input type="number" min="0" step="1" value="${qty}"
+        row += `<td>${inv}</td>`;
+        row += `<td><input type="number" min="0" step="1" value="${qty}"
           oninput="captureQty('${item.barcode}', this.value, ${price}, '${supplier}', '${item.name}')"
-          onfocus="this.select()" onkeydown="event.stopPropagation();"></td>;
-        row += <td>${amt}</td>;
+          onfocus="this.select()" onkeydown="event.stopPropagation();"></td>`;
+        row += `<td>${amt}</td>`;
       } else {
-        row += <td>${inv}</td>;
-        row += <td>${(inv * price).toFixed(2)}</td>;
+        row += `<td>${inv}</td>`;
+        row += `<td>${(inv * price).toFixed(2)}</td>`;
       }
 
-      row += </tr>;
+      row += `</tr>`;
       html += row;
     });
 
-    html += </tbody></table>;
+    html += `</tbody></table>`;
     container.innerHTML = html;
     updateTotal();
   }
@@ -244,7 +244,7 @@
 
   function updateTotal() {
     const total = Object.values(orderData).reduce((sum, o) => sum + o.amount, 0);
-    document.getElementById('totalOrder').textContent = Total Order Amount: ₱${total.toFixed(2)};
+    document.getElementById('totalOrder').textContent = `Total Order Amount: ₱${total.toFixed(2)}`;
   }
 
   function exportToCSV() {
@@ -270,7 +270,7 @@
     const blob = new Blob([csv], { type: 'text/csv' });
     const a = document.createElement('a');
     const supplierName = selectedSuppliers.length === 1 ? selectedSuppliers[0] : 'multiple';
-    const filename = ${isPO ? 'PO' : 'Inventory'}_${supplierName}_${new Date().toISOString().slice(0,10)}.csv;
+    const filename = `${isPO ? 'PO' : 'Inventory'}_${supplierName}_${new Date().toISOString().slice(0,10)}.csv`;
     a.href = URL.createObjectURL(blob);
     a.download = filename;
     a.click();
